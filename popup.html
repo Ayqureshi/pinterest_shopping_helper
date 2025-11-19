@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pinterest Pins</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 320px;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+      .actions button {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      textarea {
+        width: 100%;
+        min-height: 60px;
+        margin-bottom: 10px;
+        padding: 6px;
+        resize: vertical;
+      }
+      ul {
+        list-style: none;
+        padding: 0;
+        max-height: 420px;
+        overflow-y: auto;
+        margin: 0;
+      }
+      li {
+        border-bottom: 1px solid #eee;
+        padding: 8px 0;
+      }
+      .pin-controls {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .pin-controls button {
+        flex: 1;
+        padding: 4px 0;
+        border: none;
+        color: #fff;
+        font-weight: bold;
+        border-radius: 4px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 4px;
+        width: auto;
+      }
+      .pin-controls .approve {
+        background: #1aa14a;
+      }
+      .pin-controls .reject {
+        background: #c62828;
+      }
+      .pin-controls .clear {
+        background: #c62828;
+      }
+      .pin-controls button.active {
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+      }
+      .pin-title {
+        font-weight: bold;
+        margin: 0 0 4px;
+      }
+      .pin-description {
+        margin: 0;
+        font-size: 12px;
+        color: #555;
+      }
+      .pin-link {
+        font-size: 12px;
+        color: #e60023;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="actions">
+      <button id="refresh">Extract Pins</button>
+      <button id="export" disabled>Export Selected</button>
+    </div>
+    <button id="undo" disabled>Undo Remove</button>
+    <textarea id="status" readonly></textarea>
+    <ul id="pins"></ul>
+    <script src="utils/export.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
