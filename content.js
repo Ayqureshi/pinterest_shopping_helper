@@ -127,6 +127,22 @@ function extractPinsFromDocument() {
         anchor,
       });
 
+      // Attempt to find video URL
+      let videoUrl = null;
+      const videoElement = card.querySelector("video");
+      if (videoElement) {
+        videoUrl = videoElement.src || videoElement.querySelector("source")?.src;
+        // If it's a blob, we might not be able to use it easily in export without downloading, 
+        // but often Pinterest has specific video-stream URLs. We'll capture what we can.
+        if (videoUrl && videoUrl.startsWith("blob:")) {
+          // For now, if it's a blob and we can't resolve it, we might accept it 
+          // but it won't work in a static HTML file. 
+          // However, often the 'poster' is the image we already have.
+          // Sometimes video is in a different structure. 
+        }
+      }
+
+
       const key = `${absoluteUrl}|${imageUrl}`;
       if (seenEntries.has(key)) {
         return;
@@ -135,6 +151,7 @@ function extractPinsFromDocument() {
       pins.push({
         title: itemTitle || baseTitle,
         imageUrl,
+        videoUrl, // Add video URL
         link: absoluteUrl,
         description,
       });

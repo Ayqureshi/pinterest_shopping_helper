@@ -130,9 +130,8 @@ const commitCardDecision = ({ card, include, yOffset = 0 }) => {
   updateDecisionButtonsState();
 
   const direction = include ? 1 : -1;
-  card.style.transform = `translate(${direction * 400}px, ${yOffset}px) rotate(${
-    direction * 30
-  }deg)`;
+  card.style.transform = `translate(${direction * 400}px, ${yOffset}px) rotate(${direction * 30
+    }deg)`;
   card.style.opacity = 0;
 
   setTimeout(() => {
@@ -337,11 +336,11 @@ const exportSelectedPins = () => {
   }
 
   try {
-    exportToCSV(selected);
-    setStatus(`Exported ${selected.length} pins to CSV.`);
+    exportToHTML(selected);
+    setStatus(`Exported ${selected.length} pins to HTML. Open file & copy to Numbers.`);
   } catch (error) {
     console.error("Failed to export pins", error);
-    setStatus("Failed to export pins to CSV.", true);
+    setStatus("Failed to export pins.", true);
   }
 };
 
