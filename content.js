@@ -5,31 +5,6 @@ const sleep = (ms) =>
     setTimeout(resolve, ms);
   });
 
-async function autoScrollUntilSettled({
-  maxIdleIterations = 5,
-  delay = 1200,
-} = {}) {
-  let lastHeight = 0;
-  let idleIterations = 0;
-
-  while (idleIterations < maxIdleIterations) {
-    window.scrollTo({
-      top: document.body.scrollHeight,
-      behavior: "smooth",
-    });
-
-    await sleep(delay);
-
-    const currentHeight = document.body.scrollHeight;
-    if (currentHeight <= lastHeight) {
-      idleIterations += 1;
-    } else {
-      idleIterations = 0;
-      lastHeight = currentHeight;
-    }
-  }
-}
-
 function normalizeUrl(href) {
   try {
     return new URL(href, location.origin).href;
@@ -86,9 +61,9 @@ function shouldIncludeImage(imageUrl) {
   }
 }
 
-function extractPinsFromDocument() {
+// Extract pins visible on the page right now
+function extractVisiblePins() {
   const pins = [];
-  const seenEntries = new Set();
   const anchors = document.querySelectorAll('a[href*="/pin/"]');
 
   anchors.forEach((anchor) => {
@@ -127,44 +102,140 @@ function extractPinsFromDocument() {
         anchor,
       });
 
+      // Smart Title Generation: Clean and truncate to < 5 words
+      const generateSmartTitle = (text) => {
+        if (!text) return null;
+
+        let clean = text.replace(/^This contains an image of[:\s]*/i, "")
+          .replace(/^Image of[:\s]*/i, "")
+          .replace(/No description available\.?/i, "")
+          .replace(/[:\-\|]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (!clean || clean.length < 2) return null;
+
+        return clean.split(" ").slice(0, 5).join(" ");
+      };
+
+      // Extract Board Name from URL as fallback
+      // URL format: pinterest.com/username/board-name/
+      const getBoardName = () => {
+        const path = window.location.pathname;
+        const parts = path.split("/").filter(p => p);
+        // usually /username/boardname/
+        if (parts.length >= 2) {
+          return parts[1].replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()); // simple title case
+        }
+        return "Pinterest";
+      };
+
+      let smartTitle = generateSmartTitle(itemTitle || baseTitle);
+
+      // Fallback to Board Name if title is still missing
+      if (!smartTitle) {
+        const boardName = getBoardName();
+        smartTitle = `${boardName} Pin`;
+      }
+
+      // Description logic
+      let cleanDesc = description || (itemTitle && itemTitle !== smartTitle ? itemTitle : "") || imageElement.alt || "";
+
+      // Clean up description if it's just the prefix
+      if (cleanDesc.match(/^This contains an image of[:\s]*$/i)) {
+        cleanDesc = "";
+      }
+
+      const fullDescription = cleanDesc || "No description available.";
+
       // Attempt to find video URL
       let videoUrl = null;
       const videoElement = card.querySelector("video");
       if (videoElement) {
-        videoUrl = videoElement.src || videoElement.querySelector("source")?.src;
-        // If it's a blob, we might not be able to use it easily in export without downloading, 
-        // but often Pinterest has specific video-stream URLs. We'll capture what we can.
-        if (videoUrl && videoUrl.startsWith("blob:")) {
-          // For now, if it's a blob and we can't resolve it, we might accept it 
-          // but it won't work in a static HTML file. 
-          // However, often the 'poster' is the image we already have.
-          // Sometimes video is in a different structure. 
+        let rawUrl = videoElement.src || videoElement.querySelector("source")?.src;
+        if (rawUrl && !rawUrl.startsWith("blob:")) {
+          videoUrl = rawUrl;
+        } else {
+          const sources = Array.from(videoElement.querySelectorAll("source"));
+          for (const source of sources) {
+            if (source.src && !source.src.startsWith("blob:")) {
+              videoUrl = source.src;
+              break;
+            }
+          }
         }
       }
 
-
-      const key = `${absoluteUrl}|${imageUrl}`;
-      if (seenEntries.has(key)) {
-        return;
-      }
-
       pins.push({
-        title: itemTitle || baseTitle,
+        title: smartTitle,
         imageUrl,
-        videoUrl, // Add video URL
+        videoUrl,
         link: absoluteUrl,
-        description,
+        description: fullDescription,
       });
-      seenEntries.add(key);
     });
   });
 
   return pins;
 }
 
+
 async function getPins() {
-  await autoScrollUntilSettled();
-  return extractPinsFromDocument();
+  const allPins = new Map(); // Use Map to dedup by unique key
+
+  const addPinsToMap = (pins) => {
+    pins.forEach(pin => {
+      const key = pin.link;
+      if (!allPins.has(key)) {
+        allPins.set(key, pin);
+      }
+    });
+  };
+
+  // Scroll to the very top first to ensure we catch initial items
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  await sleep(1000); // Wait for top content to load
+
+  // Initial scrape at top
+  addPinsToMap(extractVisiblePins());
+
+  // Loop to scroll down incrementally
+  while (true) {
+    const currentScrollTop = window.scrollY || document.documentElement.scrollTop;
+    const documentHeight = document.body.scrollHeight;
+    const viewportHeight = window.innerHeight;
+
+    // Check if we've reached the bottom
+    if ((viewportHeight + currentScrollTop) >= documentHeight - 50) {
+      // We are at the bottom. Wait a bit longer to see if more content loads.
+      await sleep(2500);
+
+      const newHeight = document.body.scrollHeight;
+      if (newHeight > documentHeight) {
+        // Content expanded, continue loop
+        continue;
+      } else {
+        // No new content, check one last time and break.
+        // Final scrape
+        addPinsToMap(extractVisiblePins());
+        break;
+      }
+    }
+
+    // Scroll down by 60% of viewport height to ensure overlap and loading time
+    window.scrollBy({
+      top: viewportHeight * 0.6,
+      behavior: "smooth",
+    });
+
+    // Wait for content to render/load
+    await sleep(1500);
+
+    // Scrape at this position
+    addPinsToMap(extractVisiblePins());
+  }
+
+  return Array.from(allPins.values());
 }
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
