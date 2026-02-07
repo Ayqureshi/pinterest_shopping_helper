@@ -102,51 +102,63 @@ function extractVisiblePins() {
         anchor,
       });
 
-      // Smart Title Generation: Clean and truncate to < 5 words
+      // Smart Title Generation: Clean and truncate
+      // Smart Title Generation: Clean and truncate
       const generateSmartTitle = (text) => {
         if (!text) return null;
 
-        let clean = text.replace(/^This contains an image of[:\s]*/i, "")
-          .replace(/^Image of[:\s]*/i, "")
-          .replace(/No description available\.?/i, "")
-          .replace(/[:\-\|]/g, " ")
+        // Filter out generic Pinterest AI text
+        const genericPatterns = [
+          /^This (may )?contain(s)?( an)? image of/i,
+          /^Image of/i,
+          /^No description available/i,
+          /^Pixel data/i,
+          /^via @/i // "via @user" is often not a useful title
+        ];
+
+        for (const pattern of genericPatterns) {
+          if (pattern.test(text)) return null;
+        }
+
+        let clean = text.replace(/[:\-\|]/g, " ")
           .replace(/\s+/g, " ")
           .trim();
 
         if (!clean || clean.length < 2) return null;
 
-        return clean.split(" ").slice(0, 5).join(" ");
+        return clean.split(" ").slice(0, 6).join(" ");
       };
 
       // Extract Board Name from URL as fallback
-      // URL format: pinterest.com/username/board-name/
       const getBoardName = () => {
         const path = window.location.pathname;
         const parts = path.split("/").filter(p => p);
-        // usually /username/boardname/
         if (parts.length >= 2) {
-          return parts[1].replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()); // simple title case
+          const raw = parts[1].replace(/-/g, " ");
+          return raw.charAt(0).toUpperCase() + raw.slice(1);
         }
         return "Pinterest";
       };
 
       let smartTitle = generateSmartTitle(itemTitle || baseTitle);
+      const boardName = getBoardName();
 
-      // Fallback to Board Name if title is still missing
+      // Fallback to Board Name if title is missing
       if (!smartTitle) {
-        const boardName = getBoardName();
         smartTitle = `${boardName} Pin`;
       }
 
       // Description logic
-      let cleanDesc = description || (itemTitle && itemTitle !== smartTitle ? itemTitle : "") || imageElement.alt || "";
+      let cleanDesc = description || (itemTitle && itemTitle !== smartTitle ? itemTitle : "") || "";
 
-      // Clean up description if it's just the prefix
-      if (cleanDesc.match(/^This contains an image of[:\s]*$/i)) {
+      // Filter generic descriptions too
+      if (cleanDesc.match(/^This (may )?contain(s)?( an)? image of/i) ||
+        cleanDesc.match(/^Image of/i) ||
+        cleanDesc.match(/^via @/i)) {
         cleanDesc = "";
       }
 
-      const fullDescription = cleanDesc || "No description available.";
+      const fullDescription = cleanDesc; // Can be empty string now
 
       // Attempt to find video URL
       let videoUrl = null;
@@ -194,7 +206,18 @@ async function getPins() {
 
   // Scroll to the very top first to ensure we catch initial items
   window.scrollTo({ top: 0, behavior: 'instant' });
-  await sleep(1000); // Wait for top content to load
+
+  // Wait for pins to actually appear in the DOM (handling slow rendering)
+  let attempts = 0;
+  while (attempts < 20) { // Try for 10 seconds (20 * 500ms)
+    const pinCount = document.querySelectorAll('a[href*="/pin/"]').length;
+    if (pinCount > 0) {
+      break; // Pins found! Proceed.
+    }
+    console.log("Waiting for pins to render...");
+    await sleep(500);
+    attempts++;
+  }
 
   // Initial scrape at top
   addPinsToMap(extractVisiblePins());
@@ -235,13 +258,25 @@ async function getPins() {
     addPinsToMap(extractVisiblePins());
   }
 
-  return Array.from(allPins.values());
+  // Helper to extract board name (re-used)
+  const getBoardName = () => {
+    const path = window.location.pathname;
+    const parts = path.split("/").filter(p => p);
+    if (parts.length >= 2) {
+      const raw = parts[1].replace(/-/g, " ");
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return "Pinterest";
+  };
+
+  const boardName = getBoardName();
+  return { pins: Array.from(allPins.values()), boardName };
 }
 
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request?.type === "GET_PINS") {
     getPins()
-      .then((pins) => sendResponse({ success: true, pins }))
+      .then(({ pins, boardName }) => sendResponse({ success: true, pins, boardName }))
       .catch((error) => {
         console.error("Failed to collect pins", error);
         sendResponse({ success: false, error: error.message });

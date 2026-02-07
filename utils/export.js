@@ -62,7 +62,7 @@ function exportToCSV(arrayOfObjects = []) {
 }
 
 
-function exportToHTML(data = []) {
+function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
   if (!Array.isArray(data) || !data.length) {
     console.warn("exportToHTML called with empty data.");
     return;
@@ -101,22 +101,39 @@ function exportToHTML(data = []) {
     })
     .join("\n");
 
+  // Construct metadata HTML
+  let metadataHtml = "";
+  if (metadata.gender || metadata.itemType || metadata.brands) {
+    metadataHtml = `<div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #1db954;">`;
+    if (metadata.gender) {
+      metadataHtml += `<p><strong>Target Audience:</strong> ${metadata.gender}</p>`;
+    }
+    if (metadata.itemType) {
+      metadataHtml += `<p><strong>Item Type:</strong> ${metadata.itemType}</p>`;
+    }
+    if (metadata.brands) {
+      metadataHtml += `<p><strong>Preferred Brands/Styles:</strong> ${metadata.brands}</p>`;
+    }
+    metadataHtml += `</div>`;
+  }
+
   // Clean, standard HTML5
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pinterest Export</title>
+  <title>${boardName} Summary</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     table { border-collapse: collapse; width: 100%; border: 1px solid #ccc; }
     th, td { border: 1px solid #ccc; padding: 10px; vertical-align: middle; text-align: left; }
     th { background-color: #f4f4f4; font-weight: bold; }
-    img, video { border-radius: 4px; }
+    img { border-radius: 4px; }
   </style>
 </head>
 <body>
-  <h1>Pinterest Export Need to Copy? (Cmd+A, Cmd+C) then Paste in Numbers/Excel</h1>
+  <h1>${boardName} Summary</h1>
+  ${metadataHtml}
   <table>
     <thead>
       <tr>
@@ -131,11 +148,12 @@ function exportToHTML(data = []) {
 </html>`;
 
   // Trigger download with .html extension
+  const safeFilename = boardName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + "_summary.html";
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "pinterest_pins.html";
+  link.download = safeFilename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

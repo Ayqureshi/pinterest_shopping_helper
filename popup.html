@@ -5,21 +5,57 @@
   <meta charset="UTF-8" />
   <title>Pinterest Pins</title>
   <style>
+    :root {
+      /* Light Theme Variables (Default) */
+      --bg-color: #f9f9f9;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --text-secondary: #666666;
+      --accent-green: #1db954;
+      --border-color: #e0e0e0;
+      /* Solid background for sticky elements to hide scrolling content */
+      --bg-overlay: #ffffff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* Dark Theme Variables (Starboy) */
+        --bg-color: #121212;
+        --card-bg: #1e1e1e;
+        --text-color: #e0e0e0;
+        --text-secondary: #a0a0a0;
+        --hover-bg: #333333;
+        --border-color: #333333;
+        /* Solid background for sticky elements */
+        --bg-overlay: #121212;
+      }
+    }
+
+    html {
+      overscroll-behavior: none;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
       padding: 0;
-      width: 320px;
+      width: 340px;
       display: flex;
       flex-direction: column;
-      /* Remove fixed height to allow popup to resize */
-      min-height: 200px;
+      min-height: 400px;
+      min-width: 340px;
+      /* Ensure width is fixed for consistent layout */
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      /* Prevent rubber-banding/overscroll on Mac */
+      overscroll-behavior: none;
     }
 
     .main-content {
       flex: 1;
-      padding: 12px;
-      /* Remove overflow-y: auto to let body scroll */
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
     }
 
     button {
@@ -29,123 +65,294 @@
       cursor: pointer;
     }
 
+    /* --- Compact Header --- */
     .header-sticky {
       position: sticky;
       top: 0;
       z-index: 1000;
-      background: white;
-      padding-bottom: 1px;
-      /* Avoid gap */
-      margin-bottom: 10px;
+      background: var(--bg-overlay);
+      backdrop-filter: blur(5px);
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
     }
 
-    .actions {
+    /* Export Modal Overlay */
+    .modal-overlay {
+      display: none;
+      /* Hidden by default */
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg-color);
+      z-index: 2000;
+      flex-direction: column;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .form-input,
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--text-color);
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .form-input:focus,
+    .form-select:focus {
+      outline: none;
+      border-color: var(--accent-green);
+    }
+
+    .modal-actions {
+      margin-top: auto;
+      display: flex;
+      gap: 12px;
+    }
+
+    .header-actions {
       display: flex;
       gap: 8px;
+      width: 100%;
     }
 
-    .actions button {
+    .text-button {
       flex: 1;
-      margin-bottom: 0;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      border-radius: 6px;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s ease;
     }
 
-    textarea {
+    .text-button:hover:not(:disabled) {
+      background: var(--hover-bg);
+      border-color: var(--text-secondary);
+    }
+
+    .text-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status-container {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      text-align: center;
       width: 100%;
-      min-height: 60px;
-      margin-bottom: 0;
-      padding: 6px;
-      resize: vertical;
-      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    ul {
-      list-style: none;
-      padding: 0;
-      max-height: 420px;
-      overflow-y: auto;
-      margin: 0;
-    }
-
-    li {
-      border-bottom: 1px solid #eee;
-      padding: 8px 0;
-    }
-
-    .pin-controls {
-      display: none;
-    }
-
+    /* --- Card --- */
     .card-container {
+      flex: 1;
+      display: flex;
+      /* Use flexbox */
+      flex-direction: column;
+      align-items: center;
+      /* Center horizontally */
+      justify-content: flex-start;
       position: relative;
-      width: 100%;
-      min-height: 200px;
     }
 
     .card {
-      /* Simple block display for single card */
       width: 100%;
-      background: #fff;
-      border-radius: 8px;
-      /* box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); */
-      /* Optional now that it's flat? */
-      /* Keep standard flow */
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      /* Lighter shadow for light mode */
       position: relative;
       display: flex;
       flex-direction: column;
-
-      /* Center content */
       align-items: center;
       text-align: center;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      margin-bottom: 16px;
+      /* Spacing */
+    }
+
+    .card-content {
+      padding: 16px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .pin-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 8px 0;
+      color: var(--text-color);
+    }
+
+    .pin-description {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      line-height: 1.4;
+
+      /* Clamp to 2 lines to ensure consistency */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 2.8em;
+      /* Fallback/Safety */
+    }
+
+    .card img,
+    .card video {
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .pin-link {
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      background: var(--hover-bg);
+      color: var(--text-color) !important;
+      text-decoration: none !important;
+      font-size: 12px !important;
+      padding: 6px 12px;
+      border-radius: 20px;
+      margin-top: 8px !important;
+      transition: background 0.2s ease;
+    }
+
+    .pin-link:hover {
+      background: #e0e0e0;
+    }
+
+    .pin-link::after {
+      content: " ↗";
+      margin-left: 4px;
+      font-size: 10px;
+    }
+
+    /* --- Footer Actions --- */
+    .footer-sticky {
+      position: sticky;
+      bottom: 0;
+      z-index: 1000;
+      background: var(--bg-overlay);
+      backdrop-filter: blur(10px);
+      padding: 16px;
+      margin-top: auto;
+      /* Remove border, use shadow for cleaner integration */
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
     }
 
     .decision-actions {
       display: flex;
       gap: 12px;
-      margin-top: auto;
-      padding-top: 4px;
-      padding-left: 4px;
-      /* Fix edge issue */
-      padding-right: 4px;
-      /* Fix edge issue */
+      /* Remove inner padding that might cause offset */
+      padding: 0;
     }
 
     .decision-button {
       flex: 1;
-      width: auto;
-      margin-bottom: 0;
       border: none;
-      border-radius: 6px;
-      padding: 10px;
-      font-size: 20px;
-      color: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      color: white;
+      /* Default text color for colored buttons */
+    }
+
+    .decision-button:active {
+      transform: scale(0.95);
+    }
+
+    .decision-button:hover:not(:disabled) {
+      transform: scale(1.02);
+      filter: brightness(0.95);
+      /* Slight darken for light mode hover */
     }
 
     .decision-button.approve {
-      background: #1aa14a;
+      background: var(--accent-green);
+      flex: 2;
+      color: white;
     }
 
     .decision-button.reject {
-      background: #c62828;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--accent-red);
+      /* Color text instead of background */
+      flex: 1;
+    }
+
+    .decision-button.reject:hover {
+      background: rgba(233, 20, 41, 0.05);
+      border-color: var(--accent-red);
     }
 
     .decision-button.undo {
-      background: #f1f1f1;
-      color: #333;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      flex: 1;
+    }
+
+    .decision-button.undo:hover {
+      background: var(--hover-bg);
     }
 
     .decision-button:disabled {
-      opacity: 0.5;
+      opacity: 0.4;
       cursor: not-allowed;
+      transform: none;
+      filter: grayscale(1);
     }
 
-    .footer-sticky {
-      position: sticky;
-      bottom: 0;
-      z-index: 1000;
-      background: white;
-      padding-top: 10px;
-      border-top: 1px solid #eee;
-      margin-top: auto;
+    .decision-icon {
+      font-size: 20px;
+      margin-bottom: 2px;
+      display: block;
     }
 
     .decision-button .label {
@@ -158,32 +365,87 @@
 <body>
   <div class="main-content">
     <div class="header-sticky">
-      <div class="actions actions-top">
-        <button id="refresh" data-action="refresh">Extract Pins</button>
-        <button id="export" data-action="export" disabled>Export Selected</button>
+      <div class="header-actions">
+        <button id="refresh" class="text-button" data-action="refresh">Extract Pins</button>
+        <button id="export" class="text-button" data-action="export" disabled>Export Selected</button>
       </div>
-      <textarea id="status" readonly></textarea>
+      <div id="status" class="status-container">Ready to start</div>
     </div>
 
-    <div id="card-container" class="card-container"></div>
+    <div id="card-container" class="card-container">
+      <!-- Cards injected here -->
+    </div>
 
     <div class="footer-sticky">
       <div class="decision-actions">
-        <button class="decision-button approve" type="button" data-decision="approve" aria-label="Approve pin">
-          ✓
-          <span class="label">Keep</span>
-        </button>
-        <button class="decision-button undo" type="button" data-decision="undo" aria-label="Undo swipe">
-          ↺
+        <!-- Undo -->
+        <button class="decision-button undo" type="button" data-decision="undo" aria-label="Undo"
+          title="Undo Last Action">
+          <span class="decision-icon">↺</span>
           <span class="label">Undo</span>
         </button>
-        <button class="decision-button reject" type="button" data-decision="reject" aria-label="Reject pin">
-          ✕
+
+        <!-- Skip -->
+        <button class="decision-button reject" type="button" data-decision="reject" aria-label="Skip" title="Skip Pin">
+          <span class="decision-icon">✕</span>
           <span class="label">Skip</span>
+        </button>
+
+        <!-- Keep -->
+        <button class="decision-button approve" type="button" data-decision="approve" aria-label="Keep"
+          title="Keep Pin">
+          <span class="decision-icon">✓</span>
+          <span class="label">Keep</span>
         </button>
       </div>
     </div>
   </div>
+  <!-- Export Options Modal -->
+  <div id="export-modal" class="modal-overlay">
+    <h2 style="margin: 0 0 24px 0;">Finalize Export</h2>
+
+    <div class="form-group">
+      <label class="form-label">Who are you shopping for?</label>
+      <select id="gender-select" class="form-select">
+        <option value="Men">Men</option>
+        <option value="Women">Women</option>
+        <option value="Unisex">Unisex / Both</option>
+        <option value="Kids">Kids</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Item Type</label>
+      <select id="item-type-select" class="form-select">
+        <option value="Clothing">Clothing</option>
+        <option value="Accessories">Accessories</option>
+        <option value="Shoes">Shoes</option>
+        <option value="Entire Pin">Entire Pin</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Preferred Brands</label>
+      <select id="brands-select" class="form-select">
+        <option value="Banana Republic">Banana Republic</option>
+        <option value="Express">Express</option>
+        <option value="Everlane">Everlane</option>
+        <option value="Uniqlo">Uniqlo</option>
+        <option value="J.Crew">J.Crew</option>
+        <option value="Zara">Zara</option>
+        <option value="H&M">H&M</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button id="cancel-export" class="decision-button"
+        style="background: transparent; border: 1px solid var(--border-color); color: var(--text-color);">Cancel</button>
+      <button id="confirm-export" class="decision-button" style="background: var(--accent-green); color: white;">Export
+        Pins</button>
+    </div>
+  </div>
+
   <script src="utils/export.js"></script>
   <script src="popup.js"></script>
 </body>

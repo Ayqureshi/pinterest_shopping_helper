@@ -16,6 +16,7 @@ const state = {
   pins: [],
   selections: new Map(), // key -> boolean
   activePinIndex: 0,
+  boardName: "Pinterest", // Default
 };
 
 const actionHistory = []; // Stores { pin, previousSelection }
@@ -48,12 +49,15 @@ const renderStatus = () => {
     ? `${baseStatusMessage}\n${summary}`
     : summary;
 
+  // Update styling for status error
+  statusElement.style.color = statusIsError ? "var(--accent-red)" : "var(--text-secondary)";
+
   if ("value" in statusElement) {
     statusElement.value = combined;
   } else {
     statusElement.textContent = combined;
+    statusElement.title = combined; // Tooltip for overflow
   }
-  statusElement.style.color = statusIsError ? "#c00" : "#333";
 };
 
 const setStatus = (message = "", isError = false) => {
@@ -134,7 +138,7 @@ const createCard = (pin) => {
   card.className = "card";
 
   const cardContent = document.createElement("div");
-  cardContent.style.padding = "12px";
+  cardContent.className = "card-content"; // Use CSS class instead of inline style
 
   const title = document.createElement("h3");
   title.className = "pin-title";
@@ -143,7 +147,14 @@ const createCard = (pin) => {
   title.style.fontSize = "16px";
   cardContent.appendChild(title);
 
-  if (pin.description && pin.description !== "No description available.") {
+  // Logic to hide redundant or low-quality descriptions
+  const cleanTitle = (pin.title || "").toLowerCase().trim();
+  const cleanDesc = (pin.description || "").toLowerCase().trim();
+
+  const isRedundant = cleanDesc === cleanTitle || cleanDesc.includes(cleanTitle);
+  const isGeneric = cleanDesc.startsWith("this contains an image of");
+
+  if (pin.description && pin.description !== "No description available." && !isRedundant && !isGeneric) {
     const desc = document.createElement("p");
     desc.className = "pin-description";
     desc.textContent = pin.description;
@@ -221,15 +232,37 @@ const renderCurrentPin = () => {
 
 // --- Initialization & Event Listeners ---
 
-const exportSelectedPins = () => {
+// Modal Elements
+const exportModal = document.getElementById("export-modal");
+const genderSelect = document.getElementById("gender-select");
+const itemTypeSelect = document.getElementById("item-type-select");
+const brandsSelect = document.getElementById("brands-select");
+const confirmExportBtn = document.getElementById("confirm-export");
+const cancelExportBtn = document.getElementById("cancel-export");
+
+const showExportModal = () => {
   const selected = getSelectedPins();
   if (!selected.length) {
     setStatus("Select at least one pin before exporting.", true);
     return;
   }
+  exportModal.classList.add("active");
+};
+
+const hideExportModal = () => {
+  exportModal.classList.remove("active");
+};
+
+const handleConfirmExport = () => {
+  const selected = getSelectedPins();
+  const gender = genderSelect.value;
+  const itemType = itemTypeSelect.value;
+  const brands = brandsSelect.value;
+
   try {
-    exportToHTML(selected);
+    exportToHTML(selected, state.boardName, { gender, itemType, brands });
     setStatus(`Exported ${selected.length} pins.`);
+    hideExportModal();
   } catch (error) {
     console.error("Export failed", error);
     setStatus("Failed to export.", true);
@@ -237,13 +270,14 @@ const exportSelectedPins = () => {
 };
 
 const requestPinsFromActiveTab = () => {
-  setStatus("Collecting pins... please wait.");
+  setStatus("Refreshing page to ensure clean state...");
   toggleButtonsDisabled(refreshButtons, true);
   toggleButtonsDisabled(exportButtons, true);
 
   state.pins = [];
   state.selections.clear();
   state.activePinIndex = 0;
+  state.boardName = "Pinterest";
   actionHistory.length = 0;
   renderCurrentPin();
   updateDecisionButtonsState();
@@ -256,45 +290,67 @@ const requestPinsFromActiveTab = () => {
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { type: "GET_PINS" }, (response) => {
-      toggleButtonsDisabled(refreshButtons, false);
-
+    // RELOAD LOGIC
+    chrome.tabs.reload(tab.id, {}, () => {
       if (chrome.runtime.lastError) {
-        setStatus(`Error: ${chrome.runtime.lastError.message}`, true);
-        return;
-      }
-      if (!response?.success) {
-        setStatus(response?.error || "Failed to collect pins.", true);
+        setStatus("Failed to refresh page.", true);
+        toggleButtonsDisabled(refreshButtons, false);
         return;
       }
 
-      state.pins = response.pins || [];
-      // Default: select all? Or select none? 
-      // User flow suggests they want to "Keep" or "Skip".
-      // Let's assume default is "undefined" (not selected) until they choose.
-      // Or, better, assume "selected" if they export without reviewing?
-      // No, "Reviewing" implies filtering. Let's make them choose.
-      // But if they just want to grab all, they might get annoyed.
-      // Let's auto-select all initially?
-      // "Swipe right to include, left to exclude" implies partial selection.
-      // Let's default to TRUE (Include) for everything, and "Skip" sets to FALSE.
-      // That way if they scroll 5 pins and export, do they get 5 or 27?
-      // Previously: `state.selections.get(key) !== false` (default true).
-      // Let's keep that.
-      state.pins.forEach(p => state.selections.set(getPinKey(p), true));
+      setStatus("Page reloading... please wait.");
 
-      state.activePinIndex = 0;
-      renderCurrentPin();
-      setStatus(""); // Clear loading message, renderStatus will take over
-      renderStatus();
-      updateExportState();
-      updateDecisionButtonsState();
+      // Listener to wait for reload completion
+      const onUpdatedListener = (tabId, changeInfo, tabInfo) => {
+        if (tabId === tab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(onUpdatedListener);
+
+          setStatus("Page loaded. Collecting pins...");
+
+          // Wait a moment for dynamic content to initialize
+          setTimeout(() => {
+            chrome.tabs.sendMessage(tab.id, { type: "GET_PINS" }, (response) => {
+              toggleButtonsDisabled(refreshButtons, false);
+
+              if (chrome.runtime.lastError) {
+                // Sometimes content script isn't ready immediately after refresh?
+                // Or if it's not injected automatically (manifest matches might need time?)
+                setStatus(`Extension not ready. Try again.`, true);
+                return;
+              }
+
+              if (!response?.success) {
+                setStatus(response?.error || "Failed to collect pins.", true);
+                return;
+              }
+
+              state.pins = response.pins || [];
+              state.boardName = response.boardName || "Pinterest";
+
+              state.pins.forEach(p => state.selections.set(getPinKey(p), true));
+
+              state.activePinIndex = 0;
+              renderCurrentPin();
+              setStatus("");
+              renderStatus();
+              updateExportState();
+              updateDecisionButtonsState();
+            });
+          }, 4000); // 4s delay to allow JS on page to hydrate
+        }
+      };
+
+      chrome.tabs.onUpdated.addListener(onUpdatedListener);
     });
   });
 };
 
 refreshButtons.forEach(btn => btn.addEventListener("click", requestPinsFromActiveTab));
-exportButtons.forEach(btn => btn.addEventListener("click", exportSelectedPins));
+// Change: Open modal instead of direct export
+exportButtons.forEach(btn => btn.addEventListener("click", showExportModal));
+
+confirmExportBtn?.addEventListener("click", handleConfirmExport);
+cancelExportBtn?.addEventListener("click", hideExportModal);
 
 decisionControls.approve?.addEventListener("click", () => commitCardDecision(true));
 decisionControls.reject?.addEventListener("click", () => commitCardDecision(false));
