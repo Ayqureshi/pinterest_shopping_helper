@@ -129,24 +129,7 @@ function extractVisiblePins() {
         return clean.split(" ").slice(0, 6).join(" ");
       };
 
-      // Extract Board Name from URL as fallback
-      const getBoardName = () => {
-        const path = window.location.pathname;
-        const parts = path.split("/").filter(p => p);
-        if (parts.length >= 2) {
-          const raw = parts[1].replace(/-/g, " ");
-          return raw.charAt(0).toUpperCase() + raw.slice(1);
-        }
-        return "Pinterest";
-      };
-
       let smartTitle = generateSmartTitle(itemTitle || baseTitle);
-      const boardName = getBoardName();
-
-      // Fallback to Board Name if title is missing
-      if (!smartTitle) {
-        smartTitle = `${boardName} Pin`;
-      }
 
       // Description logic
       let cleanDesc = description || (itemTitle && itemTitle !== smartTitle ? itemTitle : "") || "";
@@ -156,6 +139,27 @@ function extractVisiblePins() {
         cleanDesc.match(/^Image of/i) ||
         cleanDesc.match(/^via @/i)) {
         cleanDesc = "";
+      }
+
+      // FALLBACK STRATEGY:
+      // If no specific title, try to extract a meaningful phrase from the description (e.g., "Black Leather Jacket")
+      if (!smartTitle && cleanDesc) {
+        // Take the first few words of the description as the title
+        smartTitle = cleanDesc.split(/[\.\,\n]/)[0].split(" ").slice(0, 6).join(" ");
+      }
+
+      // Look for Alt Text details if we still have nothing
+      if (!smartTitle && imageElement.alt) {
+        const altText = imageElement.alt;
+        // Avoid "May contain..." in alt text too
+        if (!altText.startsWith("May contain")) {
+          smartTitle = altText.split(" ").slice(0, 6).join(" ");
+        }
+      }
+
+      // Final Fallback
+      if (!smartTitle) {
+        smartTitle = `${boardName} Pin`;
       }
 
       const fullDescription = cleanDesc; // Can be empty string now

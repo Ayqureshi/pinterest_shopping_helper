@@ -69,7 +69,7 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
   }
 
   // Define headers
-  const headers = ["Image", "Title", "Description", "Link"];
+  const headers = ["Image", "Item Name", "Description", "Link"];
 
   // Create HTML table
   let tableRows = data
@@ -87,8 +87,13 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
           }">`;
       }
 
-      const title = pin.title || "";
-      const desc = pin.description || "";
+      const title = pin.title || "Unknown Item";
+      let desc = pin.description || "";
+
+      // "List it in the description behavior"
+      const itemLabel = metadata.itemType ? metadata.itemType : "Item";
+      desc += `<br><br><strong>${itemLabel}:</strong> ${title}`;
+
       const link = pin.link ? `<a href="${pin.link}" target="_blank">${pin.link}</a>` : "";
 
       return `

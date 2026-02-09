@@ -253,19 +253,102 @@ const hideExportModal = () => {
   exportModal.classList.remove("active");
 };
 
-const handleConfirmExport = () => {
+// AI Model
+let net = null;
+
+// Load MobileNet
+(async () => {
+  try {
+    setStatus("Loading AI Model...");
+    net = await mobilenet.load();
+    console.log("MobileNet loaded");
+    setStatus("AI Ready.");
+    // Clear status after a moment if it's just "AI Ready"
+    setTimeout(() => {
+      if (baseStatusMessage === "AI Ready.") setStatus("");
+    }, 2000);
+  } catch (e) {
+    console.error("Failed to load MobileNet", e);
+    setStatus("AI Model failed to load.", true);
+  }
+})();
+
+const handleConfirmExport = async () => {
   const selected = getSelectedPins();
   const gender = genderSelect.value;
   const itemType = itemTypeSelect.value;
   const brands = brandsSelect.value;
 
+  hideExportModal();
+
+  // Check if AI is ready, but don't block
+  if (!net) {
+    console.warn("AI Model not loaded strictly yet. Proceeding with text fallback.");
+    // Optionally notify user via status transiently
+    setStatus("AI Model loading matched timeout. Exporting with text...", false);
+  } else {
+    // Disable buttons during analysis
+    toggleButtonsDisabled(exportButtons, true);
+    setStatus(`Analyzing ${selected.length} images with AI... please wait.`);
+  }
+
+  // Process pins
+  const processedPins = [];
+
+  for (let i = 0; i < selected.length; i++) {
+    const pin = selected[i];
+
+    // Only run AI if model is ready
+    if (net) {
+      setStatus(`Analyzing image ${i + 1} of ${selected.length}...`);
+
+      // Create temp image for classification
+      try {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = pin.imageUrl;
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          // Timeout image load
+          setTimeout(() => reject(new Error("Image load timeout")), 5000);
+        });
+
+        const predictions = await net.classify(img);
+
+        if (predictions && predictions.length > 0) {
+          const top = predictions[0];
+          const label = top.className.split(",")[0];
+
+          // Check if we need to replace the title
+          const currentTitle = (pin.title || "").toLowerCase();
+          const genericMarkers = ["this contains", "image of", "pinterest", "pin", "unknown", "starboy"];
+          const isGeneric = genericMarkers.some(m => currentTitle.includes(m)) || currentTitle.length < 3;
+
+          if (isGeneric) {
+            pin.title = label.charAt(0).toUpperCase() + label.slice(1);
+          } else {
+            pin.description = (pin.description || "") + `\n(AI Tag: ${label})`;
+          }
+        }
+      } catch (err) {
+        console.warn("AI Classification failed for pin", pin, err);
+      }
+    }
+
+    processedPins.push(pin);
+  }
+
   try {
-    exportToHTML(selected, state.boardName, { gender, itemType, brands });
-    setStatus(`Exported ${selected.length} pins.`);
-    hideExportModal();
+    const aiUsed = !!net && processedPins.some(p => p.description && p.description.includes("(AI Tag:"));
+    exportToHTML(processedPins, state.boardName, { gender, itemType, brands });
+    setStatus(`Exported ${processedPins.length} pins${aiUsed ? " with AI tags" : ""}.`);
   } catch (error) {
     console.error("Export failed", error);
     setStatus("Failed to export.", true);
+  } finally {
+    toggleButtonsDisabled(exportButtons, false);
   }
 };
 
