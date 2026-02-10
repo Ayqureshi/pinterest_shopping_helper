@@ -1,77 +1,101 @@
 
 /**
- * Fetches the "Best Guess" for an image URL using Google's legacy Search By Image.
- * valid host_permissions are required in manifest.json.
+ * Scrapes the "Best Guess" for an image URL by opening a Google Lens tab in the background.
+ * Requires "tabs" and "scripting" permissions.
  * 
  * @param {string} imageUrl 
  * @returns {Promise<string|null>} The best guess text, or null if failed.
  */
-async function fetchLensResult(imageUrl) {
-    try {
-        // 1. Construct the search URL
-        const searchUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(imageUrl)}&client=app`;
+async function scrapeLensTab(imageUrl) {
+    return new Promise((resolve) => {
+        try {
+            // Open the *modern* Lens URL
+            const lensUrl = `https://lens.google.com/upload?url=${encodeURIComponent(imageUrl)}`;
 
-        // 2. Fetch the HTML content
-        const response = await fetch(searchUrl, {
-            method: "GET",
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-        });
+            chrome.tabs.create({ url: lensUrl, active: false }, (tab) => {
+                if (chrome.runtime.lastError || !tab) {
+                    console.warn("Failed to create tab", chrome.runtime.lastError);
+                    resolve(null);
+                    return;
+                }
 
-        if (!response.ok) {
-            console.warn("Lens fetch failed:", response.status);
-            return null;
+                const tabId = tab.id;
+
+                // Timeout safety: If tab doesn't load in 10s, kill it.
+                const timeoutId = setTimeout(() => {
+                    console.warn("Tab load timeout for", imageUrl);
+                    chrome.tabs.remove(tabId).catch(() => { });
+                    resolve(null);
+                }, 12000);
+
+                const listener = (tid, changeInfo, tabInfo) => {
+                    if (tid === tabId && changeInfo.status === 'complete') {
+                        chrome.tabs.onUpdated.removeListener(listener);
+                        clearTimeout(timeoutId);
+
+                        // Allow a brief moment for dynamic JS to populate the input box
+                        setTimeout(() => {
+                            // Inject script to scrape
+                            chrome.scripting.executeScript({
+                                target: { tabId: tabId },
+                                func: () => {
+                                    // --- BROWSER CONTEXT ---
+                                    try {
+                                        // 1. The Search Box (Top priority)
+                                        // Lens usually puts the recognized entity here: "White Sneakers"
+                                        const inputs = document.querySelectorAll('input, textarea');
+                                        for (const input of inputs) {
+                                            if (input.placeholder && (input.placeholder.includes("Search") || input.getAttribute("aria-label") === "Search")) {
+                                                if (input.value) return input.value;
+                                            }
+                                            // Fallback: check value of any search-like input
+                                            if (input.name === "q" && input.value) return input.value;
+                                        }
+
+                                        // 2. Headings / Title Fallback
+                                        // Sometimes title is "Subject - Google Lens"
+                                        if (document.title && !document.title.includes("Google Lens")) {
+                                            return document.title;
+                                        }
+
+                                        // 3. Accessibility labels often hide the truth
+                                        const region = document.querySelector('[role="main"]');
+                                        if (region) {
+                                            // Heuristic: Look for large text?
+                                            // This is risky. Sticking to input box is safest for "Active" scraping.
+                                        }
+
+                                        return null;
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                }
+                            }, (results) => {
+                                // Cleanup
+                                chrome.tabs.remove(tabId).catch(() => { });
+
+                                if (chrome.runtime.lastError) {
+                                    console.warn("Script injection failed", chrome.runtime.lastError);
+                                    resolve(null);
+                                } else {
+                                    const result = results?.[0]?.result;
+                                    resolve(result);
+                                }
+                            });
+                        }, 1000); // Wait 1s after 'complete' for React/JS to hydrate input
+                    }
+                };
+
+                chrome.tabs.onUpdated.addListener(listener);
+            });
+        } catch (e) {
+            console.error("Scraping error", e);
+            resolve(null);
         }
-
-        const html = await response.text();
-
-        // 3. Parse the result using Regex (lighter than DOMParser for simple extraction)
-        // Common pattern for "Best guess for this image" in the legacy result:
-        // "Best guess for this image: ... <a ...>TEXT</a>" 
-        // OR inside an input box: value="TEXT"
-
-        // Pattern A: The "Best guess" label often appears near the result.
-        // DOM Parser is safer.
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-
-        // Strategy 1: Look for the specific "Best guess" container
-        // Class names change, but often structure is: [Best guess for this image] [Link with Text]
-
-        // Try to find the input box which often contains the refined search query
-        // <input name="q" ... value="KEYWORD">
-        const searchInput = doc.querySelector('input[name="q"]');
-        if (searchInput && searchInput.value) {
-            return searchInput.value;
-        }
-
-        // Strategy 2: Look for title tag, often "Result - Google Search"
-        // Title usually is "KEYWORD - Google Search"
-        const title = doc.title;
-        if (title && title.includes(" - Google Search")) {
-            return title.replace(" - Google Search", "");
-        }
-
-        // Strategy 3: Look for "Best guess for this image" text node
-        const links = Array.from(doc.querySelectorAll('a'));
-        for (const link of links) {
-            // Sometimes the best guess is a link
-            if (link.href && link.href.includes("/search?q=")) {
-                // Heuristic: The link text might be it
-            }
-        }
-
-        return null;
-
-    } catch (error) {
-        console.warn("Error fetching Lens result:", error);
-        return null;
-    }
+    });
 }
 
-// Sleep helper
-const wait = (ms) => new Promise(r => setTimeout(r, ms));
-
-window.fetchLensResult = fetchLensResult;
-window.wait = wait;
+// Keep the old one available just in case, or alias it?
+// Replacing the window function with the new one.
+window.fetchLensResult = scrapeLensTab; // Alias for compatibility with popup.js
+window.wait = (ms) => new Promise(r => setTimeout(r, ms));

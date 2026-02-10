@@ -291,19 +291,20 @@ const handleConfirmExport = async () => {
   // Rate limiting delay (ms)
   const DELAY_MS = 1500;
 
-  setStatus(`Fetching Google results for ${selected.length} items... (This takes a moment)`);
+  setStatus(`Opening background tabs for ${selected.length} items... (Please do not close them)`);
 
   for (let i = 0; i < selected.length; i++) {
     const pin = selected[i];
 
-    setStatus(`Identifying item ${i + 1} of ${selected.length}...`);
+    setStatus(`Processing item ${i + 1} of ${selected.length} (Opening Google Lens)...`);
 
     try {
-      // Add a small random delay to be polite
+      // Add delay to prevent browser throttling tab opens
       if (i > 0) {
-        await window.wait(DELAY_MS + Math.random() * 500);
+        await window.wait(1000);
       }
 
+      // This now calls the TAB-based scraper
       const result = await window.fetchLensResult(pin.imageUrl);
 
       if (result) {
