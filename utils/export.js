@@ -94,6 +94,19 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
       const itemLabel = metadata.itemType ? metadata.itemType : "Item";
       desc += `<br><br><strong>${itemLabel}:</strong> ${title}`;
 
+      // Show Lens Result if found
+      if (pin.lensResult) {
+        desc += `<br><br><div style="padding:8px; background:#e8f0fe; border-left:4px solid #1a73e8; border-radius:4px;">
+          <strong>🔮 Google Suggests:</strong> ${pin.lensResult}
+        </div>`;
+      }
+
+      // Reverse Search Link
+      const lensUrl = `https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}`;
+      const findItemLink = `<a href="${lensUrl}" target="_blank" style="display:inline-block;margin-top:10px;padding:6px 10px;background:#E60023;color:white;text-decoration:none;border-radius:16px;font-size:12px;font-weight:bold;">Find Item 🔍</a>`;
+
+      desc += `<br><br>${findItemLink}`;
+
       const link = pin.link ? `<a href="${pin.link}" target="_blank">${pin.link}</a>` : "";
 
       return `

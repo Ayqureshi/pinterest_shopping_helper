@@ -257,21 +257,22 @@ const hideExportModal = () => {
 let net = null;
 
 // Load MobileNet
-(async () => {
-  try {
-    setStatus("Loading AI Model...");
-    net = await mobilenet.load();
-    console.log("MobileNet loaded");
-    setStatus("AI Ready.");
-    // Clear status after a moment if it's just "AI Ready"
-    setTimeout(() => {
-      if (baseStatusMessage === "AI Ready.") setStatus("");
-    }, 2000);
-  } catch (e) {
-    console.error("Failed to load MobileNet", e);
-    setStatus("AI Model failed to load.", true);
-  }
-})();
+// Load MobileNet - DISABLED for speed and to prefer Reverse Search
+// (async () => {
+//   try {
+//     setStatus("Loading AI Model...");
+//     net = await mobilenet.load();
+//     console.log("MobileNet loaded");
+//     setStatus("AI Ready.");
+//     // Clear status after a moment if it's just "AI Ready"
+//     setTimeout(() => {
+//       if (baseStatusMessage === "AI Ready.") setStatus("");
+//     }, 2000);
+//   } catch (e) {
+//     console.error("Failed to load MobileNet", e);
+//     setStatus("AI Model failed to load.", true);
+//   }
+// })();
 
 const handleConfirmExport = async () => {
   const selected = getSelectedPins();
@@ -282,68 +283,48 @@ const handleConfirmExport = async () => {
   hideExportModal();
 
   // Check if AI is ready, but don't block
-  if (!net) {
-    console.warn("AI Model not loaded strictly yet. Proceeding with text fallback.");
-    // Optionally notify user via status transiently
-    setStatus("AI Model loading matched timeout. Exporting with text...", false);
-  } else {
-    // Disable buttons during analysis
-    toggleButtonsDisabled(exportButtons, true);
-    setStatus(`Analyzing ${selected.length} images with AI... please wait.`);
-  }
+  setStatus(`Exporting ${selected.length} pins...`);
 
-  // Process pins
+  // Process pins (with Lens Scraping)
   const processedPins = [];
+
+  // Rate limiting delay (ms)
+  const DELAY_MS = 1500;
+
+  setStatus(`Fetching Google results for ${selected.length} items... (This takes a moment)`);
 
   for (let i = 0; i < selected.length; i++) {
     const pin = selected[i];
 
-    // Only run AI if model is ready
-    if (net) {
-      setStatus(`Analyzing image ${i + 1} of ${selected.length}...`);
+    setStatus(`Identifying item ${i + 1} of ${selected.length}...`);
 
-      // Create temp image for classification
-      try {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = pin.imageUrl;
-
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          // Timeout image load
-          setTimeout(() => reject(new Error("Image load timeout")), 5000);
-        });
-
-        const predictions = await net.classify(img);
-
-        if (predictions && predictions.length > 0) {
-          const top = predictions[0];
-          const label = top.className.split(",")[0];
-
-          // Check if we need to replace the title
-          const currentTitle = (pin.title || "").toLowerCase();
-          const genericMarkers = ["this contains", "image of", "pinterest", "pin", "unknown", "starboy"];
-          const isGeneric = genericMarkers.some(m => currentTitle.includes(m)) || currentTitle.length < 3;
-
-          if (isGeneric) {
-            pin.title = label.charAt(0).toUpperCase() + label.slice(1);
-          } else {
-            pin.description = (pin.description || "") + `\n(AI Tag: ${label})`;
-          }
-        }
-      } catch (err) {
-        console.warn("AI Classification failed for pin", pin, err);
+    try {
+      // Add a small random delay to be polite
+      if (i > 0) {
+        await window.wait(DELAY_MS + Math.random() * 500);
       }
+
+      const result = await window.fetchLensResult(pin.imageUrl);
+
+      if (result) {
+        // Clean up the result
+        const cleanResult = result.trim();
+        pin.lensResult = cleanResult; // Store separate from description
+        console.log(`Lens result for ${pin.imageUrl}: ${cleanResult}`);
+      } else {
+        console.log(`No Lens result for ${pin.imageUrl}`);
+      }
+    } catch (err) {
+      console.warn("Lens processing error for pin", pin, err);
     }
 
     processedPins.push(pin);
   }
 
   try {
-    const aiUsed = !!net && processedPins.some(p => p.description && p.description.includes("(AI Tag:"));
+    const aiUsed = processedPins.some(p => !!p.lensResult);
     exportToHTML(processedPins, state.boardName, { gender, itemType, brands });
-    setStatus(`Exported ${processedPins.length} pins${aiUsed ? " with AI tags" : ""}.`);
+    setStatus(`Exported ${processedPins.length} pins${aiUsed ? " with matched items" : ""}.`);
   } catch (error) {
     console.error("Export failed", error);
     setStatus("Failed to export.", true);
