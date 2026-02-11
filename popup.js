@@ -274,6 +274,67 @@ let net = null;
 //   }
 // })();
 
+// --- Settings Logic ---
+const settingsModal = document.getElementById("settings-modal");
+const settingsBtn = document.getElementById("settings-btn");
+const closeSettingsBtn = document.getElementById("close-settings");
+const saveSettingsBtn = document.getElementById("save-settings");
+const apiKeyInput = document.getElementById("api-key-input");
+
+let geminiApiKey = "";
+
+// Load API Key on start
+const configKey = (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY) ? CONFIG.GEMINI_API_KEY : "";
+
+if (configKey) {
+  geminiApiKey = configKey;
+  console.log("Gemini API Key loaded from config.js");
+  // Disable input if managed by config
+  if (apiKeyInput) {
+    apiKeyInput.value = "**************** (Managed by config.js)";
+    apiKeyInput.disabled = true;
+    saveSettingsBtn.disabled = true;
+    saveSettingsBtn.textContent = "Managed via config.js";
+  }
+} else {
+  // Fallback to storage
+  chrome.storage.local.get(["geminiApiKey"], (result) => {
+    if (result.geminiApiKey) {
+      geminiApiKey = result.geminiApiKey;
+      apiKeyInput.value = geminiApiKey; // Or mask it?
+      console.log("Gemini API Key loaded from storage");
+    }
+  });
+}
+
+settingsBtn?.addEventListener("click", () => {
+  settingsModal.classList.add("active");
+});
+
+closeSettingsBtn?.addEventListener("click", () => {
+  settingsModal.classList.remove("active");
+});
+
+saveSettingsBtn?.addEventListener("click", () => {
+  const key = apiKeyInput.value.trim();
+  if (key) {
+    chrome.storage.local.set({ geminiApiKey: key }, () => {
+      geminiApiKey = key;
+      setStatus("API Key saved.");
+      setTimeout(() => setStatus(""), 2000);
+      settingsModal.classList.remove("active");
+    });
+  } else {
+    // Allow clearing?
+    chrome.storage.local.remove("geminiApiKey", () => {
+      geminiApiKey = "";
+      setStatus("API Key removed.");
+      settingsModal.classList.remove("active");
+    });
+  }
+});
+
+
 const handleConfirmExport = async () => {
   const selected = getSelectedPins();
   const gender = genderSelect.value;
@@ -285,38 +346,44 @@ const handleConfirmExport = async () => {
   // Check if AI is ready, but don't block
   setStatus(`Exporting ${selected.length} pins...`);
 
-  // Process pins (with Lens Scraping)
+  // Process pins (with Lens Scraping or Gemini API)
   const processedPins = [];
 
-  // Rate limiting delay (ms)
-  const DELAY_MS = 1500;
+  // Sequential Processing (Safe Mode to avoid 429) / Gemini Mode
+  const DELAY_BETWEEN_ITEMS = 2500; // 2.5 seconds for scraping
+  const GEMINI_DELAY = 200; // Fast processing for Paid Tier
 
-  setStatus(`Opening background tabs for ${selected.length} items... (Please do not close them)`);
+  const useGemini = !!geminiApiKey;
+  const method = useGemini ? "Gemini AI" : "Google Lens (Window)";
+
+  setStatus(`Processing ${selected.length} items using ${method}...`);
 
   for (let i = 0; i < selected.length; i++) {
     const pin = selected[i];
 
-    setStatus(`Processing item ${i + 1} of ${selected.length} (Opening Google Lens)...`);
+    setStatus(`Identifying item ${i + 1} of ${selected.length} (${method})...`);
 
     try {
-      // Add delay to prevent browser throttling tab opens
+      // Add delay
       if (i > 0) {
-        await window.wait(1000);
+        await window.wait(useGemini ? GEMINI_DELAY : DELAY_BETWEEN_ITEMS);
       }
 
-      // This now calls the TAB-based scraper
-      const result = await window.fetchLensResult(pin.imageUrl);
+      let result = null;
+      if (useGemini) {
+        result = await window.identifyItemWithGemini(pin.imageUrl, geminiApiKey);
+      } else {
+        result = await window.fetchLensResult(pin.imageUrl);
+      }
 
       if (result) {
-        // Clean up the result
-        const cleanResult = result.trim();
-        pin.lensResult = cleanResult; // Store separate from description
-        console.log(`Lens result for ${pin.imageUrl}: ${cleanResult}`);
+        pin.lensResult = result.trim();
+        console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
       } else {
-        console.log(`No Lens result for ${pin.imageUrl}`);
+        console.log(`No result for ${pin.imageUrl}`);
       }
     } catch (err) {
-      console.warn("Lens processing error for pin", pin, err);
+      console.warn("Processing error for pin", pin, err);
     }
 
     processedPins.push(pin);

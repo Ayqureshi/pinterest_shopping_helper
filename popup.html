@@ -368,6 +368,7 @@
       <div class="header-actions">
         <button id="refresh" class="text-button" data-action="refresh">Extract Pins</button>
         <button id="export" class="text-button" data-action="export" disabled>Export Selected</button>
+        <button id="settings-btn" class="text-button" style="flex:0; padding:8px 12px;" title="Settings">⚙️</button>
       </div>
       <div id="status" class="status-container">Ready to start</div>
     </div>
@@ -446,8 +447,31 @@
     </div>
   </div>
 
+  <!-- Settings Modal (Reuse modal-overlay style) -->
+  <div id="settings-modal" class="modal-overlay">
+    <h2 style="margin: 0 0 16px 0;">Settings</h2>
+
+    <div class="form-group">
+      <label class="form-label" for="api-key-input">Gemini API Key</label>
+      <input type="password" id="api-key-input" class="form-input" placeholder="Paste your API key here">
+      <p style="font-size:12px; color:#666; margin-top:4px;">
+        Required for accurate, invisible identification.
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#1db954;">Get a key</a>
+      </p>
+    </div>
+
+    <div class="modal-actions">
+      <button id="close-settings" class="decision-button"
+        style="background: var(--card-bg); color: var(--text-color); border: 1px solid var(--border-color);">Close</button>
+      <button id="save-settings" class="decision-button"
+        style="background: var(--accent-green); color: white;">Save</button>
+    </div>
+  </div>
+
   <script src="utils/export.js"></script>
   <script src="utils/lens.js"></script>
+  <script src="utils/gemini.js"></script>
+  <script src="config.js"></script>
   <!-- <script src="utils/tf.min.js"></script> -->
   <!-- <script src="utils/mobilenet.min.js"></script> -->
   <script src="popup.js"></script>

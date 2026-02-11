@@ -6,83 +6,129 @@
  * @param {string} imageUrl 
  * @returns {Promise<string|null>} The best guess text, or null if failed.
  */
-async function scrapeLensTab(imageUrl) {
+/**
+ * Scrapes the "Best Guess" for an image URL by opening a MINIMIZED Google Lens window.
+ * Requires "tabs", "scripting", and "windows" permissions.
+ * 
+ * @param {string} imageUrl 
+ * @returns {Promise<string|null>} The best guess text, or null if failed.
+ */
+async function scrapeLensWindow(imageUrl) {
     return new Promise((resolve) => {
         try {
-            // Open the *modern* Lens URL
             const lensUrl = `https://lens.google.com/upload?url=${encodeURIComponent(imageUrl)}`;
 
-            chrome.tabs.create({ url: lensUrl, active: false }, (tab) => {
-                if (chrome.runtime.lastError || !tab) {
-                    console.warn("Failed to create tab", chrome.runtime.lastError);
+            // Create a MINIMIZED window to be less intrusive
+            chrome.windows.create({
+                url: lensUrl,
+                type: 'popup',
+                state: 'minimized',
+                focused: false
+            }, (window) => {
+                if (chrome.runtime.lastError || !window) {
+                    console.warn("Failed to create window", chrome.runtime.lastError);
                     resolve(null);
                     return;
                 }
 
-                const tabId = tab.id;
+                const windowId = window.id;
+                // The window has one tab usually
+                const tabId = window.tabs && window.tabs[0] ? window.tabs[0].id : null;
 
-                // Timeout safety: If tab doesn't load in 10s, kill it.
+                // If we didn't get a tab ID immediately, we might need to query for it, 
+                // but usually windows.create returns it if we ask for a url.
+                // However, let's just listen for the tab update in that window.
+
+                // Timeout safety: 15 seconds (slower network profile)
                 const timeoutId = setTimeout(() => {
-                    console.warn("Tab load timeout for", imageUrl);
-                    chrome.tabs.remove(tabId).catch(() => { });
+                    console.warn("Window load timeout for", imageUrl);
+                    chrome.windows.remove(windowId).catch(() => { });
                     resolve(null);
-                }, 12000);
+                }, 15000);
 
+                // We need to find the tab ID if it wasn't returned
+                // Listener for tab updates
                 const listener = (tid, changeInfo, tabInfo) => {
-                    if (tid === tabId && changeInfo.status === 'complete') {
+                    // Check if this tab matches our window
+                    if (tabInfo.windowId === windowId && changeInfo.status === 'complete') {
                         chrome.tabs.onUpdated.removeListener(listener);
                         clearTimeout(timeoutId);
 
-                        // Allow a brief moment for dynamic JS to populate the input box
-                        setTimeout(() => {
-                            // Inject script to scrape
-                            chrome.scripting.executeScript({
-                                target: { tabId: tabId },
-                                func: () => {
-                                    // --- BROWSER CONTEXT ---
-                                    try {
-                                        // 1. The Search Box (Top priority)
-                                        // Lens usually puts the recognized entity here: "White Sneakers"
-                                        const inputs = document.querySelectorAll('input, textarea');
-                                        for (const input of inputs) {
-                                            if (input.placeholder && (input.placeholder.includes("Search") || input.getAttribute("aria-label") === "Search")) {
-                                                if (input.value) return input.value;
+                        // Inject script to scrape with SMART POLLING
+                        chrome.scripting.executeScript({
+                            target: { tabId: tid },
+                            func: () => {
+                                return new Promise((resolveScript) => {
+                                    const check = () => {
+                                        try {
+                                            // 1. The Search Box (Top priority)
+                                            const inputs = document.querySelectorAll('input, textarea');
+                                            for (const input of inputs) {
+                                                if (input.placeholder && (input.placeholder.includes("Search") || input.getAttribute("aria-label") === "Search")) {
+                                                    if (input.value) return input.value;
+                                                }
+                                                if (input.name === "q" && input.value) return input.value;
                                             }
-                                            // Fallback: check value of any search-like input
-                                            if (input.name === "q" && input.value) return input.value;
-                                        }
 
-                                        // 2. Headings / Title Fallback
-                                        // Sometimes title is "Subject - Google Lens"
-                                        if (document.title && !document.title.includes("Google Lens")) {
-                                            return document.title;
-                                        }
-
-                                        // 3. Accessibility labels often hide the truth
-                                        const region = document.querySelector('[role="main"]');
-                                        if (region) {
-                                            // Heuristic: Look for large text?
-                                            // This is risky. Sticking to input box is safest for "Active" scraping.
-                                        }
-
+                                            // 2. Headings / Title Fallback
+                                            // BUT IGNORE GENERIC TERMS
+                                            if (document.title && !document.title.includes("Google Lens")) {
+                                                return document.title;
+                                            }
+                                        } catch (e) { }
                                         return null;
-                                    } catch (e) {
-                                        return null;
-                                    }
-                                }
-                            }, (results) => {
-                                // Cleanup
-                                chrome.tabs.remove(tabId).catch(() => { });
+                                    };
 
-                                if (chrome.runtime.lastError) {
-                                    console.warn("Script injection failed", chrome.runtime.lastError);
-                                    resolve(null);
-                                } else {
-                                    const result = results?.[0]?.result;
-                                    resolve(result);
-                                }
-                            });
-                        }, 1000); // Wait 1s after 'complete' for React/JS to hydrate input
+                                    const isGeneric = (text) => {
+                                        if (!text) return true;
+                                        const lower = text.toLowerCase().trim();
+                                        const generics = [
+                                            "google search", "google images", "find item", "search",
+                                            "image search", "visual matches", "visually similar images",
+                                            "undefined", "null"
+                                        ];
+                                        if (generics.includes(lower)) return true;
+                                        // If it's just "Google", ignore
+                                        if (lower === "google") return true;
+                                        return false;
+                                    };
+
+                                    // Poll every 200ms for up to 6 seconds
+                                    let attempts = 0;
+                                    const interval = setInterval(() => {
+                                        attempts++;
+                                        const res = check();
+                                        if (res && !isGeneric(res)) {
+                                            clearInterval(interval);
+                                            resolveScript(res);
+                                        } else if (res && isGeneric(res)) {
+                                            // Found something but it's generic, keep waiting for better?
+                                            // Or is that all we got? Let's wait a bit more.
+                                            if (attempts > 30) { // After 6s, if all we have is generic, give up
+                                                clearInterval(interval);
+                                                resolveScript(null);
+                                            }
+                                        }
+
+                                        if (attempts > 50) { // 10 seconds max wait inside script
+                                            clearInterval(interval);
+                                            resolveScript(null);
+                                        }
+                                    }, 200);
+                                });
+                            }
+                        }, (results) => {
+                            // Cleanup window
+                            chrome.windows.remove(windowId).catch(() => { });
+
+                            if (chrome.runtime.lastError) {
+                                console.warn("Script injection failed", chrome.runtime.lastError);
+                                resolve(null);
+                            } else {
+                                const result = results?.[0]?.result;
+                                resolve(result);
+                            }
+                        });
                     }
                 };
 
@@ -97,5 +143,5 @@ async function scrapeLensTab(imageUrl) {
 
 // Keep the old one available just in case, or alias it?
 // Replacing the window function with the new one.
-window.fetchLensResult = scrapeLensTab; // Alias for compatibility with popup.js
+window.fetchLensResult = scrapeLensWindow; // Alias for compatibility with popup.js
 window.wait = (ms) => new Promise(r => setTimeout(r, ms));

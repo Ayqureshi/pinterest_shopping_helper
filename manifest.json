@@ -5,11 +5,16 @@
   "description": "Injects custom functionality into Pinterest board pages and provides a popup UI.",
   "permissions": [
     "tabs",
-    "scripting"
+    "scripting",
+    "windows",
+    "storage"
   ],
   "host_permissions": [
     "https://www.google.com/*",
-    "https://lens.google.com/*"
+    "https://lens.google.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://*.pinimg.com/*",
+    "https://*.pinterest.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
