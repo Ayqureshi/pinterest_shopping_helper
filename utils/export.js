@@ -99,8 +99,23 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
       const lensColor = pin.lensResult ? "#1a73e8" : "#888";
       const lensBg = pin.lensResult ? "#e8f0fe" : "#f1f1f1";
 
-      desc += `<br><br><div style="padding:8px; background:${lensBg}; border-left:4px solid ${lensColor}; border-radius:4px;">
-        <strong>🔮 Google Suggests:</strong> ${lensContent}
+      desc += `<br><br><div style="padding:10px; background:${lensBg}; border-left:4px solid ${lensColor}; border-radius:4px;">
+        <strong>🔮 Gemini Analysis:</strong><br>
+        ${lensContent}
+        
+        ${pin.lensResult ? `
+        <div style="margin-top: 12px; display: flex; gap: 8px;">
+            <a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" 
+               style="text-decoration:none; color:#fff; background:#4285F4; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               Find Exact Visual Match 📸
+            </a>
+            
+            <a href="https://www.google.com/search?tbm=shop&q=${encodeURIComponent(pin.lensResult)}" target="_blank" 
+               style="text-decoration:none; color:#333; background:#fff; border:1px solid #ccc; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               Shop This Look 🛍️
+            </a>
+        </div>
+        ` : ''}
       </div>`;
 
       // Reverse Search Link (REMOVED per user request)

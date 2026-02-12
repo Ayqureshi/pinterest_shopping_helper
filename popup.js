@@ -370,15 +370,35 @@ const handleConfirmExport = async () => {
       }
 
       let result = null;
+      let lykdatResult = null;
+
       if (useGemini) {
-        result = await window.identifyItemWithGemini(pin.imageUrl, geminiApiKey);
+        // Run Gemini Parallel with Lykdat (if Lykdat key exists)
+        const tasks = [window.identifyItemWithGemini(pin.imageUrl, geminiApiKey)];
+
+        // Check for Lykdat Key
+        const lykdatKey = (typeof CONFIG !== 'undefined' && CONFIG.LYKDAT_API_KEY) ? CONFIG.LYKDAT_API_KEY : "";
+        if (lykdatKey) {
+          tasks.push(window.searchLykdat(pin.imageUrl, lykdatKey));
+        }
+
+        const results = await Promise.all(tasks);
+        result = results[0]; // Gemini Result
+        lykdatResult = results[1] || null; // Lykdat Result (or undefined if not called)
+
       } else {
+        // Legacy fallback
         result = await window.fetchLensResult(pin.imageUrl);
       }
 
       if (result) {
         pin.lensResult = result.trim();
         console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+      }
+
+      if (lykdatResult && lykdatResult.length > 0) {
+        pin.lykdatMatches = lykdatResult;
+        console.log(`Lykdat found ${lykdatResult.length} matches.`);
       } else {
         console.log(`No result for ${pin.imageUrl}`);
       }
