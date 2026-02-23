@@ -394,12 +394,18 @@ const handleConfirmExport = async () => {
       if (result) {
         pin.lensResult = result.trim();
         console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+
+        if (useGemini && geminiApiKey) {
+          setStatus(`Finding shopping link for item ${i + 1}...`);
+          pin.shoppingUrl = await window.searchItemShoppingUrlWithGemini(pin.lensResult, geminiApiKey);
+          if (pin.shoppingUrl) console.log(`Found shopping link: ${pin.shoppingUrl}`);
+        }
       }
 
       if (lykdatResult && lykdatResult.length > 0) {
         pin.lykdatMatches = lykdatResult;
         console.log(`Lykdat found ${lykdatResult.length} matches.`);
-      } else {
+      } else if (!result) {
         console.log(`No result for ${pin.imageUrl}`);
       }
     } catch (err) {

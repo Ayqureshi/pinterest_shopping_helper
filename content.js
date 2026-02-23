@@ -293,3 +293,28 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
 // Expose for debugging in the console.
 window.getPins = getPins;
+
+// Add a listener to fetch images from the content script's context to avoid CORS/403 blocks from Pinterest's CDN
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "FETCH_IMAGE_BASE64") {
+    fetch(request.url)
+      .then(response => {
+        if (!response.ok) throw new Error("Network response was not ok");
+        return response.blob();
+      })
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          sendResponse({ success: true, base64: reader.result });
+        };
+        reader.onerror = () => {
+          sendResponse({ success: false, error: "Failed to read blob" });
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(error => {
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep the message channel open for the async response
+  }
+});

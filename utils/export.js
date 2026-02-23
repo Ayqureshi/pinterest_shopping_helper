@@ -104,15 +104,21 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
         ${lensContent}
         
         ${pin.lensResult ? `
-        <div style="margin-top: 12px; display: flex; gap: 8px;">
-            <a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" 
-               style="text-decoration:none; color:#fff; background:#4285F4; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
-               Find Exact Visual Match 📸
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+            ${pin.shoppingUrl ? `
+            <a href="${pin.shoppingUrl}" target="_blank" 
+               style="text-decoration:none; color:#fff; background:#E60023; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:bold; display:inline-flex; align-items:center;">
+               🛍️ Buy Top Result Automatically
             </a>
-            
+            ` : `
             <a href="https://www.google.com/search?tbm=shop&q=${encodeURIComponent(pin.lensResult)}" target="_blank" 
-               style="text-decoration:none; color:#333; background:#fff; border:1px solid #ccc; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               style="text-decoration:none; color:#333; background:#fff; border:1px solid #ccc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
                Shop This Look 🛍️
+            </a>
+            `}
+            <a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" 
+               style="text-decoration:none; color:#1a73e8; background:#fff; border:1px solid #1a73e8; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               Find Exact Visual Match 📸
             </a>
         </div>
         ` : ''}

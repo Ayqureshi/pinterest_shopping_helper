@@ -19,10 +19,29 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
 
     try {
         // 1. Fetch the image data to convert to base64
-        const imageResp = await fetch(imageUrl);
-        if (!imageResp.ok) throw new Error("Failed to fetch image for analysis");
+        // First try fetching via content script to bypass CORS/403 blocks from Pinterest's CDN
+        let base64ImageSource = null;
+        try {
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tabs && tabs[0]) {
+                const response = await chrome.tabs.sendMessage(tabs[0].id, { type: "FETCH_IMAGE_BASE64", url: imageUrl });
+                if (response && response.success && response.base64) {
+                    base64ImageSource = response.base64;
+                }
+            }
+        } catch (e) {
+            console.warn("Could not fetch via content script, falling back to direct fetch", e);
+        }
 
-        const blob = await imageResp.blob();
+        let blob;
+        if (base64ImageSource) {
+            const r = await fetch(base64ImageSource);
+            blob = await r.blob();
+        } else {
+            const imageResp = await fetch(imageUrl);
+            if (!imageResp.ok) throw new Error("Failed to fetch image for analysis");
+            blob = await imageResp.blob();
+        }
 
         // Optimize Image: Resize to max 800px to save tokens (Cost Reduction)
         const base64Data = await new Promise((resolve, reject) => {
@@ -134,5 +153,48 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
     }
 }
 
+/**
+ * Searches the web for a shopping link for the described item using Gemini's google_search tool.
+ * @param {string} itemDescription 
+ * @param {string} apiKey 
+ * @returns {Promise<string|null>} The best shopping URL found, or null.
+ */
+async function searchItemShoppingUrlWithGemini(itemDescription, apiKey) {
+    if (!apiKey || !itemDescription) return null;
+
+    try {
+        const payload = {
+            contents: [{
+                parts: [{ text: `Find where I can buy "${itemDescription}". Return ONLY a direct shopping URL starting with https://. Do NOT return any other text, just the URL.` }]
+            }],
+            tools: [{ google_search: {} }]
+        };
+
+        const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error("Gemini Search API Error", data);
+            return null;
+        }
+
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+            const urlMatch = text.match(/https:\/\/[^\s]+/);
+            return urlMatch ? urlMatch[0] : null;
+        }
+        return null;
+    } catch (error) {
+        console.error("Gemini Shopping Search Failed:", error);
+        return null;
+    }
+}
+
 // Expose to window
 window.identifyItemWithGemini = identifyItemWithGemini;
+window.searchItemShoppingUrlWithGemini = searchItemShoppingUrlWithGemini;
