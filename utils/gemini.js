@@ -94,7 +94,10 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
                         }
                     }
                 ]
-            }]
+            }],
+            generationConfig: {
+                temperature: 0.1
+            }
         };
 
         // 3. Call Gemini API with Retry Logic
@@ -114,7 +117,7 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
                 if (!response.ok) {
                     // Handle Rate Limit (429)
                     if (response.status === 429) {
-                        console.warn("Gemini Rate Limit Exceeded. Retrying...");
+                        console.log("Gemini Rate Limit Exceeded. Retrying...");
                         // Try to parse "Please retry in X s" from message
                         const waitTimeMatch = data.error?.message?.match(/retry in\s+([0-9.]+)\s*s/);
                         let waitMs = 2000 * Math.pow(2, attempts); // Default exponential backoff
@@ -135,7 +138,7 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
 
                 // 4. Extract Text
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                return text ? text.trim() : null;
+                return text ? { text: text.trim(), base64Data } : null;
 
             } catch (error) {
                 console.error("Gemini Request Failed:", error);
@@ -154,39 +157,98 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
 }
 
 /**
- * Searches the web for a shopping link for the described item using Gemini's google_search tool.
+ * Searches the web for shopping links for all described items using Gemini's google_search tool.
  * @param {string} itemDescription 
+ * @param {string|null} base64Data
  * @param {string} apiKey 
- * @returns {Promise<string|null>} The best shopping URL found, or null.
+ * @returns {Promise<Array<{item: string, url: string}>|null>} Array of shopping links, or null.
  */
-async function searchItemShoppingUrlWithGemini(itemDescription, apiKey) {
+async function searchAllShoppingUrlsWithGemini(itemDescription, base64Data, apiKey) {
     if (!apiKey || !itemDescription) return null;
 
     try {
-        const payload = {
-            contents: [{
-                parts: [{ text: `Find where I can buy "${itemDescription}". Return ONLY a direct shopping URL starting with https://. Do NOT return any other text, just the URL.` }]
-            }],
-            tools: [{ google_search: {} }]
-        };
+        const parts = [
+            {
+                text: `Analyze the provided image and the outfit breakdown: "${itemDescription}". For EACH specific item, find the exact product page. 
+CRITICAL RULES:
+1. Google Search often returns generic pages. You MUST verify the URL goes to the exact item.
+2. DO NOT hallucinate or guess URLs. If you are not 100% confident you found the exact product page, you MUST fallback to returning a standard Google Shopping search URL for that item instead. Example fallback format: https://www.google.com/search?tbm=shop&q=Gray+Zip-up+Sweater (Replace spaces with +).
+3. Return ONLY a valid JSON array of objects, with "item" and "url" keys. No markdown, no conversational text.` }
+        ];
 
-        const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            console.error("Gemini Search API Error", data);
-            return null;
+        if (base64Data) {
+            parts.push({
+                inline_data: {
+                    mime_type: "image/jpeg",
+                    data: base64Data
+                }
+            });
         }
 
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-            const urlMatch = text.match(/https:\/\/[^\s]+/);
-            return urlMatch ? urlMatch[0] : null;
+        const payload = {
+            contents: [{ parts }],
+            tools: [{ google_search: {} }],
+            generationConfig: {
+                temperature: 0.1
+            }
+        };
+
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        console.log("Gemini Search Rate Limit Exceeded. Retrying...");
+                        const waitTimeMatch = data.error?.message?.match(/retry in\s+([0-9.]+)\s*s/);
+                        let waitMs = 2000 * Math.pow(2, attempts);
+
+                        if (waitTimeMatch && waitTimeMatch[1]) {
+                            waitMs = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000) + 1000;
+                        }
+
+                        console.log(`Waiting ${waitMs}ms before search retry...`);
+                        await new Promise(r => setTimeout(r, waitMs));
+                        attempts++;
+                        continue;
+                    }
+
+                    console.error("Gemini Search API Error", data);
+                    return null;
+                }
+
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    try {
+                        // Extract JSON from potential markdown blocks (```json ... ```)
+                        const jsonMatch = text.match(/\[[\s\S]*\]/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                return parsed;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse Gemini shopping JSON:", e, text);
+                    }
+                }
+                return null;
+
+            } catch (error) {
+                console.error("Gemini Shopping Search Request Failed:", error);
+                attempts++;
+                if (attempts >= maxAttempts) return null;
+                await new Promise(r => setTimeout(r, 2000));
+            }
         }
         return null;
     } catch (error) {
@@ -197,4 +259,4 @@ async function searchItemShoppingUrlWithGemini(itemDescription, apiKey) {
 
 // Expose to window
 window.identifyItemWithGemini = identifyItemWithGemini;
-window.searchItemShoppingUrlWithGemini = searchItemShoppingUrlWithGemini;
+window.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;

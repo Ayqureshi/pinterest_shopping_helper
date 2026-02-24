@@ -351,7 +351,7 @@ const handleConfirmExport = async () => {
 
   // Sequential Processing (Safe Mode to avoid 429) / Gemini Mode
   const DELAY_BETWEEN_ITEMS = 2500; // 2.5 seconds for scraping
-  const GEMINI_DELAY = 200; // Fast processing for Paid Tier
+  const GEMINI_DELAY = 500; // Fast processing (let the inner error handler manage 429 backoff)
 
   const useGemini = !!geminiApiKey;
   const method = useGemini ? "Gemini AI" : "Google Lens (Window)";
@@ -391,14 +391,23 @@ const handleConfirmExport = async () => {
         result = await window.fetchLensResult(pin.imageUrl);
       }
 
-      if (result) {
+      if (result && typeof result === 'object' && result.text) {
+        pin.lensResult = result.text;
+        console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+
+        if (useGemini && geminiApiKey) {
+          setStatus(`Finding shopping links for ALL items ${i + 1}...`);
+          pin.shoppingLinks = await window.searchAllShoppingUrlsWithGemini(pin.lensResult, result.base64Data, geminiApiKey);
+          if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
+        }
+      } else if (result && typeof result === 'string') {
         pin.lensResult = result.trim();
         console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
 
         if (useGemini && geminiApiKey) {
-          setStatus(`Finding shopping link for item ${i + 1}...`);
-          pin.shoppingUrl = await window.searchItemShoppingUrlWithGemini(pin.lensResult, geminiApiKey);
-          if (pin.shoppingUrl) console.log(`Found shopping link: ${pin.shoppingUrl}`);
+          setStatus(`Finding shopping links for ALL items ${i + 1}...`);
+          pin.shoppingLinks = await window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey);
+          if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
         }
       }
 

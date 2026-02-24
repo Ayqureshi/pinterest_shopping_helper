@@ -94,50 +94,59 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
       const itemLabel = metadata.itemType ? metadata.itemType : "Item";
       desc += `<br><br><strong>${itemLabel}:</strong> ${title}`;
 
-      // Show Lens Result (Always show status for debugging)
-      const lensContent = pin.lensResult || "No match found (Check console)";
-      const lensColor = pin.lensResult ? "#1a73e8" : "#888";
-      const lensBg = pin.lensResult ? "#e8f0fe" : "#f1f1f1";
+      let itemNameColumn = title;
 
-      desc += `<br><br><div style="padding:10px; background:${lensBg}; border-left:4px solid ${lensColor}; border-radius:4px;">
-        <strong>🔮 Gemini Analysis:</strong><br>
-        ${lensContent}
-        
-        ${pin.lensResult ? `
-        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
-            ${pin.shoppingUrl ? `
-            <a href="${pin.shoppingUrl}" target="_blank" 
-               style="text-decoration:none; color:#fff; background:#E60023; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:bold; display:inline-flex; align-items:center;">
-               🛍️ Buy Top Result Automatically
-            </a>
-            ` : `
-            <a href="https://www.google.com/search?tbm=shop&q=${encodeURIComponent(pin.lensResult)}" target="_blank" 
-               style="text-decoration:none; color:#333; background:#fff; border:1px solid #ccc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
-               Shop This Look 🛍️
-            </a>
-            `}
+      if (pin.lensResult) {
+        const items = pin.lensResult.split(',').map(s => s.trim()).filter(Boolean);
+        const listHtml = `<ul style="margin-top: 8px; margin-bottom: 0; padding-left: 20px;">` +
+          items.map(item => `<li style="margin-bottom: 4px;">${item}</li>`).join('') +
+          `</ul>`;
+
+        itemNameColumn = `<div style="font-size: 14px;"><strong>🔮 Gemini Analysis:</strong>${listHtml}</div>
+          <div style="margin-top: 16px;">
             <a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" 
                style="text-decoration:none; color:#1a73e8; background:#fff; border:1px solid #1a73e8; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
                Find Exact Visual Match 📸
             </a>
-        </div>
-        ` : ''}
-      </div>`;
+          </div>`;
+      } else {
+        desc += `<br><br><div style="padding:10px; background:#f1f1f1; border-left:4px solid #888; border-radius:4px;">
+            <strong>🔮 Gemini Analysis:</strong><br>
+            No match found (Check console)
+          </div>`;
+      }
 
-      // Reverse Search Link (REMOVED per user request)
-      // const lensUrl = `https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}`;
-      // const findItemLink = `<a href="${lensUrl}" target="_blank" style="display:inline-block;margin-top:10px;padding:6px 10px;background:#E60023;color:white;text-decoration:none;border-radius:16px;font-size:12px;font-weight:bold;">Find Item 🔍</a>`;
+      // Render Multiple Shopping Links in Description
+      if (pin.shoppingLinks && pin.shoppingLinks.length > 0) {
+        const linksHtml = pin.shoppingLinks.map(linkObj => `
+          <a href="${linkObj.url}" target="_blank" 
+             style="text-decoration:none; color:#fff; background:#E60023; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; margin-bottom: 6px;">
+             🛍️ Buy ${linkObj.item}
+          </a>
+        `).join('<br/>');
 
-      // desc += `<br><br>${findItemLink}`;
+        desc += `<br><br><div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <strong>Direct Shopping Links:</strong><br>
+            ${linksHtml}
+          </div>`;
+      } else if (pin.lensResult) {
+        // Fallback for AI search failure
+        desc += `<br><br><div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+            <a href="https://www.google.com/search?tbm=shop&q=${encodeURIComponent(pin.lensResult)}" target="_blank" 
+               style="text-decoration:none; color:#333; background:#fff; border:1px solid #ccc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               Shop This Look 🛍️
+            </a>
+          </div>`;
+      }
 
       const link = pin.link ? `<a href="${pin.link}" target="_blank">${pin.link}</a>` : "";
 
       return `
       <tr>
-        <td>${mediaContent}</td>
-        <td>${title}</td>
-        <td>${desc}</td>
-        <td>${link}</td>
+        <td style="vertical-align: top;">${mediaContent}</td>
+        <td style="vertical-align: top;">${itemNameColumn}</td>
+        <td style="vertical-align: top;">${desc}</td>
+        <td style="vertical-align: top; word-break: break-all;">${link}</td>
       </tr>`;
     })
     .join("\n");
