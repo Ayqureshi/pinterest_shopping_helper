@@ -377,10 +377,20 @@ const handleConfirmExport = async () => {
         if (brands) prefs.push(`Preferred Brands: ${brands}`);
         const preferencesString = prefs.join(", ");
 
+        setStatus(`Downloading image ${i + 1} of ${selected.length}...`);
+
+        // We MUST fetch the image and convert to Base64 first!
+        result = await window.fetchLensResult(pin.imageUrl);
+
+        if (!result || !result.base64Data) {
+          console.error(`Failed to get base64 data for ${pin.imageUrl}`);
+          continue;
+        }
+
         // Unified AI Call (Replaces 3 separate slow calls)
         setStatus(`Identifying items and generating links for ${i + 1} of ${selected.length} (Unified AI)...`);
 
-        const tasks = [window.analyzeImageAndGetShoppingLinks(pin.imageUrl, geminiApiKey, preferencesString)];
+        const tasks = [window.analyzeImageAndGetShoppingLinks(result.base64Data, geminiApiKey, preferencesString)];
 
         const lykdatKey = (typeof CONFIG !== 'undefined' && CONFIG.LYKDAT_API_KEY) ? CONFIG.LYKDAT_API_KEY : "";
         if (lykdatKey) {
