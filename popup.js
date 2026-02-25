@@ -343,116 +343,30 @@ const handleConfirmExport = async () => {
 
   hideExportModal();
 
-  // Check if AI is ready, but don't block
-  setStatus(`Exporting ${selected.length} pins...`);
+  if (!selected.length) {
+    setStatus('No pins selected to export.');
+    return;
+  }
 
-  // Process pins (with Lens Scraping or Gemini API)
-  const processedPins = [];
+  const lykdatKey = (typeof CONFIG !== 'undefined' && CONFIG.LYKDAT_API_KEY) ? CONFIG.LYKDAT_API_KEY : '';
 
-  // Sequential Processing (Safe Mode to avoid 429) / Gemini Mode
-  const DELAY_BETWEEN_ITEMS = 2500; // 2.5 seconds for scraping
-  const GEMINI_DELAY = 3500; // Space out the intense Unified API calls to avoid hitting 15 RPM hard
+  setStatus('Starting background export...');
 
-  const useGemini = !!geminiApiKey;
-  const method = useGemini ? "Gemini AI" : "Google Lens (Window)";
-
-  setStatus(`Processing ${selected.length} items using ${method}...`);
-
-  for (let i = 0; i < selected.length; i++) {
-    const pin = selected[i];
-
-    setStatus(`Identifying item ${i + 1} of ${selected.length} (${method})...`);
-
-    try {
-      // Add delay
-      if (i > 0) {
-        await window.wait(useGemini ? GEMINI_DELAY : DELAY_BETWEEN_ITEMS);
-      }
-
-      let result = null;
-      if (useGemini) {
-        // Build Preferences String
-        const prefs = [];
-        if (gender) prefs.push(`Target Audience: ${gender}`);
-        if (brands) prefs.push(`Preferred Brands: ${brands}`);
-        const preferencesString = prefs.join(", ");
-
-        setStatus(`Downloading image ${i + 1} of ${selected.length}...`);
-
-        // We MUST fetch the image and convert to Base64 first!
-        result = await window.fetchLensResult(pin.imageUrl);
-
-        if (!result || !result.base64Data) {
-          console.error(`Failed to get base64 data for ${pin.imageUrl}`);
-          continue;
-        }
-
-        // Unified AI Call (Replaces 3 separate slow calls)
-        setStatus(`Identifying items and generating links for ${i + 1} of ${selected.length} (Unified AI)...`);
-
-        const tasks = [window.analyzeImageAndGetShoppingLinks(result.base64Data, geminiApiKey, preferencesString)];
-
-        const lykdatKey = (typeof CONFIG !== 'undefined' && CONFIG.LYKDAT_API_KEY) ? CONFIG.LYKDAT_API_KEY : "";
-        if (lykdatKey) {
-          tasks.push(window.searchLykdat(pin.imageUrl, lykdatKey));
-        }
-
-        const results = await Promise.all(tasks);
-        const unifiedData = results[0]; // Array of {item, exact_url, preferred_url} or null
-        lykdatResult = results[1] || null;
-
-        if (unifiedData && unifiedData.length > 0) {
-          // Reconstruct the legacy data formats so export.js continues to work unchanged
-          pin.lensResult = unifiedData.map(d => d.item).join(", ");
-          pin.shoppingLinks = unifiedData.map(d => ({ item: d.item, url: d.exact_url }));
-
-          if (preferencesString) {
-            pin.preferredLinks = unifiedData
-              .filter(d => d.preferred_url)
-              .map(d => ({ item: d.item, url: d.preferred_url }));
-          }
-
-          console.log(`Unified AI processed ${pin.imageUrl}: ${unifiedData.length} items found.`);
-        } else {
-          console.log(`Unified AI failed or found nothing for ${pin.imageUrl}`);
-        }
-      } else {
-        // Legacy Google Lens (Window) fallback
-        setStatus(`Identifying item ${i + 1} of ${selected.length} (Google Lens)...`);
-        result = await window.fetchLensResult(pin.imageUrl);
-
-        if (result && typeof result === 'object' && result.text) {
-          pin.lensResult = result.text;
-          console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
-        } else if (result && typeof result === 'string') {
-          pin.lensResult = result.trim();
-          console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
-        }
-      }
-
-      if (lykdatResult && lykdatResult.length > 0) {
-        pin.lykdatMatches = lykdatResult;
-        console.log(`Lykdat found ${lykdatResult.length} matches.`);
-      } else if (!result) {
-        console.log(`No result for ${pin.imageUrl}`);
-      }
-    } catch (err) {
-      console.warn("Processing error for pin", pin, err);
+  chrome.runtime.sendMessage({
+    action: 'START_EXPORT',
+    payload: {
+      selected,
+      gender,
+      itemType,
+      brands,
+      geminiApiKey,
+      lykdatKey,
+      boardName: state.boardName
     }
-
-    processedPins.push(pin);
-  }
-
-  try {
-    const aiUsed = processedPins.some(p => !!p.lensResult);
-    exportToHTML(processedPins, state.boardName, { gender, itemType, brands });
-    setStatus(`Exported ${processedPins.length} pins${aiUsed ? " with matched items" : ""}.`);
-  } catch (error) {
-    console.error("Export failed", error);
-    setStatus("Failed to export.", true);
-  } finally {
+  }, (response) => {
+    setStatus('Export running in background for ' + selected.length + ' items. You can now close this window!');
     toggleButtonsDisabled(exportButtons, false);
-  }
+  });
 };
 
 const requestPinsFromActiveTab = () => {

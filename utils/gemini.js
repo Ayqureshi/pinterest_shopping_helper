@@ -274,9 +274,11 @@ CRITICAL RULES:
     }
 }
 
-// Expose to window
-window.identifyItemWithGemini = identifyItemWithGemini;
-window.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;
+// Expose to global scope for both popup (window) and background workers (self)
+const globalScope = typeof self !== 'undefined' ? self : window;
+globalScope.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;
+globalScope.identifyItemWithGemini = identifyItemWithGemini;
+globalScope.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;
 
 /**
  * Unified function to identify items and generate both exact and preferred URLs in a single API call.

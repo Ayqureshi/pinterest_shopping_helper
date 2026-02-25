@@ -34,16 +34,27 @@ function buildCSV(data = []) {
   return [headerRow, ...rows].join("\n");
 }
 
-function triggerDownload(csvText, filename = "pinterest_export.csv") {
-  const blob = new Blob([csvText], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+function triggerDownload(content, filename = "pinterest_export.csv", mimeType = "text/csv") {
+  if (typeof chrome !== 'undefined' && chrome.downloads) {
+    // Background worker compatibility
+    const dataUrl = `data:${mimeType};charset=utf-8,${encodeURIComponent(content)}`;
+    chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: false
+    });
+  } else {
+    // Fallback for DOM environments (popup.js)
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 }
 
 function exportToCSV(arrayOfObjects = []) {
@@ -58,7 +69,7 @@ function exportToCSV(arrayOfObjects = []) {
     return;
   }
 
-  triggerDownload(csv, "pinterest_export.csv");
+  triggerDownload(csv, "pinterest_export.csv", "text/csv");
 }
 
 
@@ -227,16 +238,9 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
 
   // Trigger download with .html extension
   const safeFilename = boardName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + "_summary.html";
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = safeFilename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  triggerDownload(html, safeFilename, "text/html");
 }
 
-window.exportToCSV = exportToCSV;
-window.exportToHTML = exportToHTML;
+const globalScope = typeof self !== 'undefined' ? self : window;
+globalScope.exportToCSV = exportToCSV;
+globalScope.exportToHTML = exportToHTML;

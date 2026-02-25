@@ -7,7 +7,8 @@
     "tabs",
     "scripting",
     "windows",
-    "storage"
+    "storage",
+    "downloads"
   ],
   "host_permissions": [
     "https://www.google.com/*",
@@ -16,6 +17,9 @@
     "https://*.pinimg.com/*",
     "https://*.pinterest.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   },
