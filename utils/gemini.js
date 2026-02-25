@@ -86,7 +86,7 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
         const payload = {
             contents: [{
                 parts: [
-                    { text: "Identify the fashion items in this image. Return a concise, comma-separated list of the visible clothing and accessories (e.g. 'Black Leather Jacket, White T-Shirt, Blue Jeans, Silver Watch'). Include details like color or material if obvious. Do NOT write full sentences." },
+                    { text: "Identify the fashion items in this image using highly specific, industry-standard fashion terminology. For example, instead of 'Zip-up Sweater', use 'Quarter-Zip Pullover' or 'Full-Zip Cardigan'. Instead of 'Pants', use 'Pleated Wide-Leg Trousers' or 'Slim Fit Chinos'. Return a concise, comma-separated list of the visible clothing and accessories. Include details like color, fit, or material if obvious. Do NOT write full sentences." },
                     {
                         inline_data: {
                             mime_type: mimeType,
@@ -158,22 +158,39 @@ async function identifyItemWithGemini(imageUrl, apiKey) {
 
 /**
  * Searches the web for shopping links for all described items using Gemini's google_search tool.
- * @param {string} itemDescription 
- * @param {string|null} base64Data
- * @param {string} apiKey 
+ * @param {string} itemDescription The identified items in the image.
+ * @param {string|null} base64Data The original image for visual context.
+ * @param {string} apiKey The Gemini API Key
+ * @param {string} [preferences] Optional string specifying brands, gender, etc.
  * @returns {Promise<Array<{item: string, url: string}>|null>} Array of shopping links, or null.
  */
-async function searchAllShoppingUrlsWithGemini(itemDescription, base64Data, apiKey) {
+async function searchAllShoppingUrlsWithGemini(itemDescription, base64Data, apiKey, preferences = "") {
     if (!apiKey || !itemDescription) return null;
 
     try {
-        const parts = [
-            {
-                text: `Analyze the provided image and the outfit breakdown: "${itemDescription}". For EACH specific item, find the exact product page. 
+        let promptText = `Analyze the provided image and outfit breakdown: "${itemDescription}". For EACH specific item, generate a Google Shopping redirect link.
 CRITICAL RULES:
-1. Google Search often returns generic pages. You MUST verify the URL goes to the exact item.
-2. DO NOT hallucinate or guess URLs. If you are not 100% confident you found the exact product page, you MUST fallback to returning a standard Google Shopping search URL for that item instead. Example fallback format: https://www.google.com/search?tbm=shop&q=Gray+Zip-up+Sweater (Replace spaces with +).
-3. Return ONLY a valid JSON array of objects, with "item" and "url" keys. No markdown, no conversational text.` }
+1. Construct a standard Google Shopping search URL for the item (since you cannot do live web searches).
+2. Format MUST BE: https://www.google.com/search?tbm=shop&q=Gray+Zip-up+Sweater
+3. Replace spaces with + in the URL.
+4. Return ONLY a valid JSON array of objects, with "item" and "url" keys. No markdown, no conversational text.`;
+
+        if (preferences) {
+            promptText = `Analyze the outfit breakdown: "${itemDescription}". For EACH specific item, strictly apply these user preferences: ${preferences}.
+CRITICAL RULES:
+1. You MUST prioritize the requested brands. Figure out the official website domain of the preferred brand (e.g. Banana Republic is bananarepublic.gap.com).
+2. Generate a DuckDuckGo "I'm Feeling Lucky" redirect URL that will automatically navigate the user to the top actual product result on that domain.
+3. CRITICAL: Search engines will return generic Category Listing pages if your search term is too simple (e.g. "Men's White T-Shirt" or "Men's Pleated Pants"). You MUST construct highly specific, realistic marketing product names in the query string using actual VISIBLE attributes of the clothing (e.g., exact color shade, fabric texture like 'ribbed' or 'linen', collar style, and fit like 'slim' or 'oversized'). 
+4. DO NOT hallucinate random materials or random styles that aren't in the image. The highly specific name must accurately describe the exact item shown (e.g., "Men's Ribbed Supima Cotton Crewneck Sweater" or "Men's Relaxed Fit Italian Linen Pleated Trousers").
+5. Ensure the Target Audience (e.g., "Men") is explicitly included in your specific name.
+6. Format MUST BE: https://duckduckgo.com/?q=%5Csite:bananarepublic.gap.com+Men%27s+Relaxed+Fit+Italian+Linen+Pleated+Trousers 
+   (The %5C is the URL-encoded backslash which triggers the blind auto-redirect to the top hit).
+7. Replace spaces with + in the query string.
+8. Return ONLY a valid JSON array of objects, with "item" (the specific name you constructed) and "url" keys. No markdown, no conversational text.`;
+        }
+
+        const parts = [
+            { text: promptText }
         ];
 
         if (base64Data) {
@@ -187,7 +204,7 @@ CRITICAL RULES:
 
         const payload = {
             contents: [{ parts }],
-            tools: [{ google_search: {} }],
+            // Removed tools: [{ google_search: {} }] so it generates links instantly.
             generationConfig: {
                 temperature: 0.1
             }

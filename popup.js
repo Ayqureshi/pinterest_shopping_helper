@@ -396,18 +396,50 @@ const handleConfirmExport = async () => {
         console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
 
         if (useGemini && geminiApiKey) {
+          const prefs = [];
+          if (gender) prefs.push(`Target Audience: ${gender}`);
+          if (brands) prefs.push(`Preferred Brands: ${brands}`);
+          const preferencesString = prefs.join(", ");
+
           setStatus(`Finding shopping links for ALL items ${i + 1}...`);
-          pin.shoppingLinks = await window.searchAllShoppingUrlsWithGemini(pin.lensResult, result.base64Data, geminiApiKey);
+
+          const exactMatchesPromise = window.searchAllShoppingUrlsWithGemini(pin.lensResult, result.base64Data, geminiApiKey);
+          const preferredMatchesPromise = preferencesString
+            ? window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey, preferencesString)
+            : Promise.resolve(null);
+
+          const [shoppingLinks, preferredLinks] = await Promise.all([exactMatchesPromise, preferredMatchesPromise]);
+
+          pin.shoppingLinks = shoppingLinks;
           if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
+
+          pin.preferredLinks = preferredLinks;
+          if (pin.preferredLinks?.length) console.log(`Found ${pin.preferredLinks.length} preferred shopping links for ${pin.imageUrl}`);
         }
       } else if (result && typeof result === 'string') {
         pin.lensResult = result.trim();
         console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
 
         if (useGemini && geminiApiKey) {
+          const prefs = [];
+          if (gender) prefs.push(`Target Audience: ${gender}`);
+          if (brands) prefs.push(`Preferred Brands: ${brands}`);
+          const preferencesString = prefs.join(", ");
+
           setStatus(`Finding shopping links for ALL items ${i + 1}...`);
-          pin.shoppingLinks = await window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey);
+
+          const exactMatchesPromise = window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey);
+          const preferredMatchesPromise = preferencesString
+            ? window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey, preferencesString)
+            : Promise.resolve(null);
+
+          const [shoppingLinks, preferredLinks] = await Promise.all([exactMatchesPromise, preferredMatchesPromise]);
+
+          pin.shoppingLinks = shoppingLinks;
           if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
+
+          pin.preferredLinks = preferredLinks;
+          if (pin.preferredLinks?.length) console.log(`Found ${pin.preferredLinks.length} preferred shopping links for ${pin.imageUrl}`);
         }
       }
 

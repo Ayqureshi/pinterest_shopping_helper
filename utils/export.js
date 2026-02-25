@@ -68,8 +68,13 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
     return;
   }
 
-  // Define headers
-  const headers = ["Image", "Item Name", "Description", "Link"];
+  // Define headers dynamically based on if preferences exist
+  const hasPreferences = !!(metadata.gender || metadata.itemType || metadata.brands);
+  const headers = ["Image", "Item Name", "Description"];
+  if (hasPreferences) {
+    headers.push("Preferred Matches");
+  }
+  headers.push("Link");
 
   // Create HTML table
   let tableRows = data
@@ -141,11 +146,34 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
 
       const link = pin.link ? `<a href="${pin.link}" target="_blank">${pin.link}</a>` : "";
 
+      // Render Multiple Preferred Shopping Links in Preferred Matches Column
+      let preferredTd = "";
+      if (hasPreferences) {
+        if (pin.preferredLinks && pin.preferredLinks.length > 0) {
+          const pLinksHtml = pin.preferredLinks.map(linkObj => `
+                <a href="${linkObj.url}" target="_blank" 
+                   style="text-decoration:none; color:#fff; background:#1db954; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; margin-bottom: 6px;">
+                   ✨ Shop ${linkObj.item}
+                </a>
+              `).join('<br/>');
+
+          preferredTd = `<td style="vertical-align: top;"><div style="display: flex; flex-direction: column; gap: 4px;">
+                  <strong>Style Matches:</strong><br>
+                  ${pLinksHtml}
+                </div></td>`;
+        } else if (pin.lensResult) {
+          preferredTd = `<td style="vertical-align: top;"><span style="color: #888; font-size:12px; font-style: italic;">No specific matches found</span></td>`;
+        } else {
+          preferredTd = `<td style="vertical-align: top;"></td>`;
+        }
+      }
+
       return `
       <tr>
         <td style="vertical-align: top;">${mediaContent}</td>
         <td style="vertical-align: top;">${itemNameColumn}</td>
         <td style="vertical-align: top;">${desc}</td>
+        ${preferredTd}
         <td style="vertical-align: top; word-break: break-all;">${link}</td>
       </tr>`;
     })
