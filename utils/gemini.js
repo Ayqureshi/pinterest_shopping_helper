@@ -274,11 +274,89 @@ CRITICAL RULES:
     }
 }
 
+/**
+ * Downloads an image and converts it to a base64 string using OffscreenCanvas for Service Worker compatibility.
+ * Resizes the image to a maximum of 800px to save Gemini tokens.
+ * @param {string} imageUrl 
+ * @returns {Promise<string|null>} Base64 data string
+ */
+async function downloadImageAsBase64(imageUrl) {
+    try {
+        let base64ImageSource = null;
+
+        // Try to fetch from active tab content script to bypass Pinterest 403 Forbidden checks
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+            try {
+                const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tabs && tabs[0]) {
+                    const response = await chrome.tabs.sendMessage(tabs[0].id, { type: "FETCH_IMAGE_BASE64", url: imageUrl });
+                    if (response && response.success && response.base64) {
+                        base64ImageSource = response.base64;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not fetch via content script, falling back to direct fetch", e);
+            }
+        }
+
+        let blob;
+        if (base64ImageSource) {
+            const r = await fetch(base64ImageSource);
+            blob = await r.blob();
+        } else {
+            const imageResp = await fetch(imageUrl);
+            if (!imageResp.ok) throw new Error("Failed to fetch image");
+            blob = await imageResp.blob();
+        }
+
+        // Service Worker compatible image resizing
+        const bitmap = await createImageBitmap(blob);
+        let width = bitmap.width;
+        let height = bitmap.height;
+
+        const MAX_SIZE = 800;
+        if (width > height) {
+            if (width > MAX_SIZE) {
+                height = Math.round(height * (MAX_SIZE / width));
+                width = MAX_SIZE;
+            }
+        } else {
+            if (height > MAX_SIZE) {
+                width = Math.round(width * (MAX_SIZE / height));
+                height = MAX_SIZE;
+            }
+        }
+
+        // Use OffscreenCanvas which is supported in Service Workers (no DOM)
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+
+        const resizedBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+
+        // Convert Blob to Base64 using FileReader sync
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const dataUrl = reader.result;
+                resolve(dataUrl.split(',')[1]); // return just the raw base64
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(resizedBlob);
+        });
+
+    } catch (err) {
+        console.error("Failed to download or convert image", err);
+        return null;
+    }
+}
+
 // Expose to global scope for both popup (window) and background workers (self)
 const globalScope = typeof self !== 'undefined' ? self : window;
 globalScope.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;
 globalScope.identifyItemWithGemini = identifyItemWithGemini;
 globalScope.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;
+globalScope.downloadImageAsBase64 = downloadImageAsBase64;
 
 /**
  * Unified function to identify items and generate both exact and preferred URLs in a single API call.
@@ -389,4 +467,4 @@ Return ONLY a valid JSON array of objects with keys "item", "exact_url", and "pr
     }
 }
 
-window.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;
+globalScope.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;

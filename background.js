@@ -45,14 +45,14 @@ async function startBackgroundExport(payload) {
 
             if (useGemini) {
                 // Fetch base64 image data first
-                result = await self.fetchLensResult(pin.imageUrl);
+                const base64Data = await self.downloadImageAsBase64(pin.imageUrl);
 
-                if (!result || !result.base64Data) {
+                if (!base64Data) {
                     console.error(`Failed to get base64 data for ${pin.imageUrl}`);
                     continue;
                 }
 
-                const tasks = [self.analyzeImageAndGetShoppingLinks(result.base64Data, geminiApiKey, preferencesString)];
+                const tasks = [self.analyzeImageAndGetShoppingLinks(base64Data, geminiApiKey, preferencesString)];
 
                 if (lykdatKey) {
                     // Note: searchLykdat was previously in popup.js or injected?
