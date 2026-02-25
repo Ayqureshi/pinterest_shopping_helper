@@ -277,3 +277,119 @@ CRITICAL RULES:
 // Expose to window
 window.identifyItemWithGemini = identifyItemWithGemini;
 window.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;
+
+/**
+ * Unified function to identify items and generate both exact and preferred URLs in a single API call.
+ * This drastically reduces API rate limit hits compared to making 3 separate calls per pin.
+ * @param {string} base64Data The original image for visual context.
+ * @param {string} apiKey The Gemini API Key
+ * @param {string} [preferences] Optional string specifying brands, gender, etc.
+ * @returns {Promise<Array<{item: string, exact_url: string, preferred_url?: string}>|null>} 
+ */
+async function analyzeImageAndGetShoppingLinks(base64Data, apiKey, preferences = "") {
+    if (!apiKey || !base64Data) return null;
+
+    try {
+        let promptText = `Analyze the provided fashion image. Identify each visible clothing item and accessory.
+For EACH item, you must generate two things:
+1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater"). DO NOT hallucinate details.
+2. "exact_url": A standard Google Shopping search URL for the item (e.g., https://www.google.com/search?tbm=shop&q=Men%27s+Gray+Zip-up+Sweater)
+
+Return ONLY a valid JSON array of objects with keys "item" and "exact_url". No markdown, no conversational text.`;
+
+        if (preferences) {
+            promptText = `Analyze the provided fashion image. Identify each visible clothing item and accessory.
+For EACH item, you must generate three things:
+1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater" or "Men's Relaxed Fit Italian Linen Pleated Trousers"). DO NOT hallucinate details.
+2. "exact_url": A standard Google Shopping search URL representing an exact visual match (e.g., https://www.google.com/search?tbm=shop&q=Men%27s+Gray+Zip-up+Sweater).
+3. "preferred_url": 
+   - Strictly apply these user preferences: ${preferences}.
+   - Figure out the official website domain of the preferred brand.
+   - Generate a DuckDuckGo "I'm Feeling Lucky" redirect URL that will automatically navigate the user to the top actual product result on that brand's domain.
+   - Ensure the Target Audience (if provided) is included in the specific name query.
+   - Format: https://duckduckgo.com/?q=%5Csite:bananarepublic.gap.com+Men%27s+Relaxed+Fit+Italian+Linen+Pleated+Trousers
+
+Return ONLY a valid JSON array of objects with keys "item", "exact_url", and "preferred_url". No markdown, no conversational text.`;
+        }
+
+        const parts = [
+            { text: promptText },
+            {
+                inline_data: {
+                    mime_type: "image/jpeg",
+                    data: base64Data
+                }
+            }
+        ];
+
+        const payload = {
+            contents: [{ parts }],
+            generationConfig: {
+                temperature: 0.1
+            }
+        };
+
+        let attempts = 0;
+        const maxAttempts = 4;
+
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        console.log("Gemini Unified Search Rate Limit Exceeded. Retrying...");
+                        const waitTimeMatch = data.error?.message?.match(/retry in\s+([0-9.]+)\s*s/);
+                        let waitMs = 2500 * Math.pow(2, attempts);
+
+                        if (waitTimeMatch && waitTimeMatch[1]) {
+                            waitMs = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000) + 1000;
+                        }
+
+                        console.log(`Waiting ${waitMs}ms before unified search retry...`);
+                        await new Promise(r => setTimeout(r, waitMs));
+                        attempts++;
+                        continue;
+                    }
+
+                    console.error("Gemini Unified Search API Error", data);
+                    return null;
+                }
+
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    try {
+                        const jsonMatch = text.match(/\[[\s\S]*\]/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                return parsed;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse Gemini unified JSON:", e, text);
+                    }
+                }
+                return null;
+
+            } catch (error) {
+                console.error("Gemini Unified Search Request Failed:", error);
+                attempts++;
+                if (attempts >= maxAttempts) return null;
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error("Gemini Unified Search Failed:", error);
+        return null;
+    }
+}
+
+window.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;

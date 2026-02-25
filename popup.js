@@ -370,76 +370,53 @@ const handleConfirmExport = async () => {
       }
 
       let result = null;
-      let lykdatResult = null;
-
       if (useGemini) {
-        // Run Gemini Parallel with Lykdat (if Lykdat key exists)
-        const tasks = [window.identifyItemWithGemini(pin.imageUrl, geminiApiKey)];
+        // Build Preferences String
+        const prefs = [];
+        if (gender) prefs.push(`Target Audience: ${gender}`);
+        if (brands) prefs.push(`Preferred Brands: ${brands}`);
+        const preferencesString = prefs.join(", ");
 
-        // Check for Lykdat Key
+        // Unified AI Call (Replaces 3 separate slow calls)
+        setStatus(`Identifying items and generating links for ${i + 1} of ${selected.length} (Unified AI)...`);
+
+        const tasks = [window.analyzeImageAndGetShoppingLinks(pin.imageUrl, geminiApiKey, preferencesString)];
+
         const lykdatKey = (typeof CONFIG !== 'undefined' && CONFIG.LYKDAT_API_KEY) ? CONFIG.LYKDAT_API_KEY : "";
         if (lykdatKey) {
           tasks.push(window.searchLykdat(pin.imageUrl, lykdatKey));
         }
 
         const results = await Promise.all(tasks);
-        result = results[0]; // Gemini Result
-        lykdatResult = results[1] || null; // Lykdat Result (or undefined if not called)
+        const unifiedData = results[0]; // Array of {item, exact_url, preferred_url} or null
+        lykdatResult = results[1] || null;
 
-      } else {
-        // Legacy fallback
-        result = await window.fetchLensResult(pin.imageUrl);
-      }
+        if (unifiedData && unifiedData.length > 0) {
+          // Reconstruct the legacy data formats so export.js continues to work unchanged
+          pin.lensResult = unifiedData.map(d => d.item).join(", ");
+          pin.shoppingLinks = unifiedData.map(d => ({ item: d.item, url: d.exact_url }));
 
-      if (result && typeof result === 'object' && result.text) {
-        pin.lensResult = result.text;
-        console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+          if (preferencesString) {
+            pin.preferredLinks = unifiedData
+              .filter(d => d.preferred_url)
+              .map(d => ({ item: d.item, url: d.preferred_url }));
+          }
 
-        if (useGemini && geminiApiKey) {
-          const prefs = [];
-          if (gender) prefs.push(`Target Audience: ${gender}`);
-          if (brands) prefs.push(`Preferred Brands: ${brands}`);
-          const preferencesString = prefs.join(", ");
-
-          setStatus(`Finding shopping links for ALL items ${i + 1}...`);
-
-          const exactMatchesPromise = window.searchAllShoppingUrlsWithGemini(pin.lensResult, result.base64Data, geminiApiKey);
-          const preferredMatchesPromise = preferencesString
-            ? window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey, preferencesString)
-            : Promise.resolve(null);
-
-          const [shoppingLinks, preferredLinks] = await Promise.all([exactMatchesPromise, preferredMatchesPromise]);
-
-          pin.shoppingLinks = shoppingLinks;
-          if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
-
-          pin.preferredLinks = preferredLinks;
-          if (pin.preferredLinks?.length) console.log(`Found ${pin.preferredLinks.length} preferred shopping links for ${pin.imageUrl}`);
+          console.log(`Unified AI processed ${pin.imageUrl}: ${unifiedData.length} items found.`);
+        } else {
+          console.log(`Unified AI failed or found nothing for ${pin.imageUrl}`);
         }
-      } else if (result && typeof result === 'string') {
-        pin.lensResult = result.trim();
-        console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+      } else {
+        // Legacy Google Lens (Window) fallback
+        setStatus(`Identifying item ${i + 1} of ${selected.length} (Google Lens)...`);
+        result = await window.fetchLensResult(pin.imageUrl);
 
-        if (useGemini && geminiApiKey) {
-          const prefs = [];
-          if (gender) prefs.push(`Target Audience: ${gender}`);
-          if (brands) prefs.push(`Preferred Brands: ${brands}`);
-          const preferencesString = prefs.join(", ");
-
-          setStatus(`Finding shopping links for ALL items ${i + 1}...`);
-
-          const exactMatchesPromise = window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey);
-          const preferredMatchesPromise = preferencesString
-            ? window.searchAllShoppingUrlsWithGemini(pin.lensResult, null, geminiApiKey, preferencesString)
-            : Promise.resolve(null);
-
-          const [shoppingLinks, preferredLinks] = await Promise.all([exactMatchesPromise, preferredMatchesPromise]);
-
-          pin.shoppingLinks = shoppingLinks;
-          if (pin.shoppingLinks?.length) console.log(`Found ${pin.shoppingLinks.length} shopping links for ${pin.imageUrl}`);
-
-          pin.preferredLinks = preferredLinks;
-          if (pin.preferredLinks?.length) console.log(`Found ${pin.preferredLinks.length} preferred shopping links for ${pin.imageUrl}`);
+        if (result && typeof result === 'object' && result.text) {
+          pin.lensResult = result.text;
+          console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
+        } else if (result && typeof result === 'string') {
+          pin.lensResult = result.trim();
+          console.log(`Result for ${pin.imageUrl}: ${pin.lensResult}`);
         }
       }
 
