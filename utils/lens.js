@@ -143,6 +143,6 @@ async function scrapeLensWindow(imageUrl) {
 
 // Keep the old one available just in case, or alias it?
 // Replacing the window function with the new one.
-const globalScope = typeof self !== 'undefined' ? self : window;
+var globalScope = typeof self !== 'undefined' ? self : window;
 globalScope.fetchLensResult = scrapeLensWindow; // Alias for compatibility with popup.js
 globalScope.wait = (ms) => new Promise(r => setTimeout(r, ms));

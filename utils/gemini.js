@@ -352,7 +352,7 @@ async function downloadImageAsBase64(imageUrl) {
 }
 
 // Expose to global scope for both popup (window) and background workers (self)
-const globalScope = typeof self !== 'undefined' ? self : window;
+var globalScope = typeof self !== 'undefined' ? self : window;
 globalScope.analyzeImageAndGetShoppingLinks = analyzeImageAndGetShoppingLinks;
 globalScope.identifyItemWithGemini = identifyItemWithGemini;
 globalScope.searchAllShoppingUrlsWithGemini = searchAllShoppingUrlsWithGemini;

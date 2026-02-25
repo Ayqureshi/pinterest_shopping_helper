@@ -241,6 +241,6 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
   triggerDownload(html, safeFilename, "text/html");
 }
 
-const globalScope = typeof self !== 'undefined' ? self : window;
+var globalScope = typeof self !== 'undefined' ? self : window;
 globalScope.exportToCSV = exportToCSV;
 globalScope.exportToHTML = exportToHTML;
