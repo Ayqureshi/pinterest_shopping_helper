@@ -345,12 +345,7 @@ Return ONLY a valid JSON array of objects with keys "item", "exact_url", and "pr
                 if (!response.ok) {
                     if (response.status === 429) {
                         console.log("Gemini Unified Search Rate Limit Exceeded. Retrying...");
-                        const waitTimeMatch = data.error?.message?.match(/retry in\s+([0-9.]+)\s*s/);
-                        let waitMs = 2500 * Math.pow(2, attempts);
-
-                        if (waitTimeMatch && waitTimeMatch[1]) {
-                            waitMs = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000) + 1000;
-                        }
+                        const waitMs = 3000 * Math.pow(2, attempts); // Standard exponential backoff
 
                         console.log(`Waiting ${waitMs}ms before unified search retry...`);
                         await new Promise(r => setTimeout(r, waitMs));
@@ -358,7 +353,7 @@ Return ONLY a valid JSON array of objects with keys "item", "exact_url", and "pr
                         continue;
                     }
 
-                    console.error("Gemini Unified Search API Error", data);
+                    console.error("Gemini Unified Search API Error", JSON.stringify(data));
                     return null;
                 }
 

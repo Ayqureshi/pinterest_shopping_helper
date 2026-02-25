@@ -351,7 +351,7 @@ const handleConfirmExport = async () => {
 
   // Sequential Processing (Safe Mode to avoid 429) / Gemini Mode
   const DELAY_BETWEEN_ITEMS = 2500; // 2.5 seconds for scraping
-  const GEMINI_DELAY = 500; // Fast processing (let the inner error handler manage 429 backoff)
+  const GEMINI_DELAY = 3500; // Space out the intense Unified API calls to avoid hitting 15 RPM hard
 
   const useGemini = !!geminiApiKey;
   const method = useGemini ? "Gemini AI" : "Google Lens (Window)";
