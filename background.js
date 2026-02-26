@@ -31,9 +31,28 @@ async function startBackgroundExport(payload) {
     const useGemini = !!geminiApiKey;
     const preferencesString = [gender ? `Target Audience: ${gender}` : null, brands ? `Preferred Brands: ${brands}` : null].filter(Boolean).join(", ");
 
+    const notifId = "exportProgress";
+    const iconBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    if (chrome.notifications) {
+        chrome.notifications.create(notifId, {
+            type: "progress",
+            iconUrl: iconBase64,
+            title: "Exporting Pinterest Board...",
+            message: `Processing 0 of ${selected.length} items (this may take a few minutes)`,
+            progress: 0
+        });
+    }
+
     for (let i = 0; i < selected.length; i++) {
         const pin = selected[i];
         console.log(`Processing item ${i + 1} of ${selected.length}...`);
+        if (chrome.notifications) {
+            chrome.notifications.update(notifId, {
+                message: `Analyzing item ${i + 1} of ${selected.length} (Please do not close browser)`,
+                progress: Math.round((i / selected.length) * 100)
+            });
+        }
 
         try {
             if (i > 0) {
@@ -91,6 +110,14 @@ async function startBackgroundExport(payload) {
         }
 
         processedPins.push(pin);
+    }
+
+    if (chrome.notifications) {
+        chrome.notifications.update(notifId, {
+            message: "Generating Shop UI HTML file...",
+            progress: 100
+        });
+        setTimeout(() => chrome.notifications.clear(notifId), 4000);
     }
 
     // Create the HTML file

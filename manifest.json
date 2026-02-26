@@ -8,7 +8,8 @@
     "scripting",
     "windows",
     "storage",
-    "downloads"
+    "downloads",
+    "notifications"
   ],
   "host_permissions": [
     "https://www.google.com/*",
