@@ -372,28 +372,30 @@ async function analyzeImageAndGetShoppingLinks(base64Data, apiKey, preferences =
     try {
         let promptText = `Analyze the provided fashion image. Identify each visible clothing item and accessory.
 For EACH item, you must generate two things:
-1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater"). DO NOT hallucinate details.
+1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater" or "Men's Relaxed Fit Stone Pleated Trousers"). CRITICAL: Pay strict attention to the EXACT color of the item in the image (e.g. identify 'stone', 'khaki', 'navy', 'beige' correctly). Do NOT blindly default to 'black' or 'white'. DO NOT hallucinate details.
 2. "exact_url": 
    - Identify the most likely brand for this item. If the brand is unknown, guess a popular fashion retailer (e.g., Nordstrom, ASOS, Zara, Amazon).
    - Generate a DuckDuckGo "I'm Feeling Lucky" redirect URL to navigate the user to the top ACTUAL PRODUCT PAGE on that website for this specific item.
-   - Format: https://duckduckgo.com/?q=%5Csite:brandname.com+Men%27s+Ribbed+Supima+Cotton+Quarter-Zip+Sweater
+   - Format MUST EXACTLY STRICTLY BE: https://duckduckgo.com/?q=%5Csite:brandname.com+Item+Name+Here
+   - CRITICAL: DO NOT return any google.com/search URLs. You must use the duckduckgo.com format.
 
 Return ONLY a valid JSON array of objects with keys "item" and "exact_url". No markdown, no conversational text.`;
 
         if (preferences) {
             promptText = `Analyze the provided fashion image. Identify each visible clothing item and accessory.
 For EACH item, you must generate three things:
-1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater" or "Men's Relaxed Fit Italian Linen Pleated Trousers"). DO NOT hallucinate details.
+1. "item": A highly specific, realistic marketing product name constructed using actual VISIBLE attributes (e.g. "Men's Ribbed Supima Cotton Quarter-Zip Sweater" or "Men's Relaxed Fit Stone Pleated Trousers"). CRITICAL: Pay strict attention to the EXACT color of the item in the image (e.g. identify 'stone', 'khaki', 'navy', 'beige' correctly). Do NOT blindly default to 'black' or 'white'. DO NOT hallucinate details.
 2. "exact_url": 
    - Identify the most likely brand for this item. If the brand is unknown, guess a popular fashion retailer (e.g., Nordstrom, ASOS, Zara, Amazon).
    - Generate a DuckDuckGo "I'm Feeling Lucky" redirect URL to navigate the user to the top ACTUAL PRODUCT PAGE on that website for this specific item.
-   - Format: https://duckduckgo.com/?q=%5Csite:brandname.com+Men%27s+Ribbed+Supima+Cotton+Quarter-Zip+Sweater
+   - Format MUST EXACTLY STRICTLY BE: https://duckduckgo.com/?q=%5Csite:brandname.com+Item+Name+Here
+   - CRITICAL: DO NOT return any google.com/search URLs. You must use the duckduckgo.com format.
 3. "preferred_url": 
    - Strictly apply these user preferences: ${preferences}.
    - Figure out the official website domain of the preferred brand.
    - Generate a DuckDuckGo "I'm Feeling Lucky" redirect URL that will automatically navigate the user to the top actual product result on that brand's domain.
    - Ensure the Target Audience (if provided) is included in the specific name query.
-   - Format: https://duckduckgo.com/?q=%5Csite:bananarepublic.gap.com+Men%27s+Relaxed+Fit+Italian+Linen+Pleated+Trousers
+   - Format MUST EXACTLY STRICTLY BE: https://duckduckgo.com/?q=%5Csite:bananarepublic.gap.com+Men%27s+Relaxed+Fit+Italian+Linen+Pleated+Trousers
 
 Return ONLY a valid JSON array of objects with keys "item", "exact_url", and "preferred_url". No markdown, no conversational text.`;
         }
