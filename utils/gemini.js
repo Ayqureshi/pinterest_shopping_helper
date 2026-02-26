@@ -334,16 +334,25 @@ async function downloadImageAsBase64(imageUrl) {
 
         const resizedBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
 
-        // Convert Blob to Base64 using FileReader sync
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const dataUrl = reader.result;
-                resolve(dataUrl.split(',')[1]); // return just the raw base64
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(resizedBlob);
-        });
+        // Convert Blob to Base64 (Service Worker safe)
+        if (typeof FileReader !== 'undefined') {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(resizedBlob);
+            });
+        } else {
+            // Fallback for Service Worker where FileReader is absent
+            const buffer = await resizedBlob.arrayBuffer();
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return globalScope.btoa(binary);
+        }
 
     } catch (err) {
         console.error("Failed to download or convert image", err);
