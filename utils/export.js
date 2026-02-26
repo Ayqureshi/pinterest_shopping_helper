@@ -129,7 +129,101 @@ function exportToHTML(data = [], boardName = "Pinterest", metadata = {}) {
         ).join("");
     }
 
-    const similarWebBtn = pin.imageUrl ? `<a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" class="btn btn-outline">🔍 See similar on web</a>` : "";
+    // Create Excel-Style View for this specific pin
+    const itemLabel = metadata.itemType ? metadata.itemType : "Item";
+    let excelDesc = pin.description ? pin.description + `<br><br><strong>${itemLabel}:</strong> ${title}` : `<strong>${itemLabel}:</strong> ${title}`;
+    
+    let itemNameColumn = title;
+    if (pin.lensResult) {
+        let excelItems = typeof pin.lensResult === 'string' ? pin.lensResult.split(',').map(s => s.trim()).filter(Boolean) : pin.lensResult;
+        const listHtml = `<ul style="margin-top: 8px; margin-bottom: 0; padding-left: 20px;">` +
+          excelItems.map(item => `<li style="margin-bottom: 4px;">${item}</li>`).join('') +
+          `</ul>`;
+        itemNameColumn = `<div style="font-size: 14px;"><strong>🔮 Gemini Analysis:</strong>${listHtml}</div>
+          <div style="margin-top: 16px;">
+            <a href="https://lens.google.com/upload?url=${encodeURIComponent(pin.imageUrl)}" target="_blank" 
+               style="text-decoration:none; color:#1a73e8; background:#fff; border:1px solid #1a73e8; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center;">
+               Find Exact Visual Match 📸
+            </a>
+          </div>`;
+    } else {
+        excelDesc += `<br><br><div style="padding:10px; background:#f1f1f1; border-left:4px solid #888; border-radius:4px;">
+            <strong>🔮 Gemini Analysis:</strong><br>No match found</div>`;
+    }
+    
+    if (pin.shoppingLinks && pin.shoppingLinks.length > 0) {
+        const linksHtml = pin.shoppingLinks.map(linkObj => `
+          <a href="${linkObj.url}" target="_blank" 
+             style="text-decoration:none; color:#fff; background:#E60023; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; margin-bottom: 6px;">
+             🛍️ Buy ${linkObj.item}
+          </a>`).join('<br/>');
+        excelDesc += `<br><br><div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;"><strong>Direct Shopping Links:</strong><br>${linksHtml}</div>`;
+    }
+    
+    let excelPreferredTd = "";
+    if (hasPreferences) {
+        if (pin.preferredLinks && pin.preferredLinks.length > 0) {
+            const pLinksHtml = pin.preferredLinks.map(linkObj => `
+                <a href="${linkObj.url}" target="_blank" 
+                   style="text-decoration:none; color:#fff; background:#1db954; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; margin-bottom: 6px;">
+                   ✨ Shop ${linkObj.item}
+                </a>`).join('<br/>');
+            excelPreferredTd = `<td style="vertical-align: top;"><div style="display: flex; flex-direction: column; gap: 4px;"><strong>Style Matches:</strong><br>${pLinksHtml}</div></td>`;
+        } else {
+            excelPreferredTd = `<td style="vertical-align: top;"><span style="color: #888; font-size:12px; font-style: italic;">No specific matches found</span></td>`;
+        }
+    }
+    
+    let tableMediaContent = "";
+    if (pin.videoUrl) {
+      tableMediaContent = `<video controls width="150" style="max-width:150px;height:auto;display:block;" poster="${pin.imageUrl || ""}">
+        <source src="${pin.videoUrl}" type="video/mp4">
+      </video>`;
+    } else if (pin.imageUrl) {
+      tableMediaContent = `<img src="${pin.imageUrl}" width="150" style="max-width:150px;height:auto;display:block;">`;
+    }
+    
+    let tableHeaders = ["Image", "Item Name", "Description"];
+    if (hasPreferences) { tableHeaders.push("Preferred Matches"); }
+    tableHeaders.push("Link");
+    
+    const excelPinLink = pin.link ? `<a href="${pin.link}" target="_blank">${pin.link}</a>` : "";
+    
+    const singlePinHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pin Details</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; border: 1px solid #ccc; }
+    th, td { border: 1px solid #ccc; padding: 10px; vertical-align: middle; text-align: left; }
+    th { background-color: #f4f4f4; font-weight: bold; }
+    img { border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>${title}</h2>
+  <table>
+    <thead><tr>${tableHeaders.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>
+      <tr>
+        <td style="vertical-align: top;">${tableMediaContent}</td>
+        <td style="vertical-align: top;">${itemNameColumn}</td>
+        <td style="vertical-align: top;">${excelDesc}</td>
+        ${excelPreferredTd}
+        <td style="vertical-align: top; word-break: break-all;">${excelPinLink}</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    // Extremely important: use encodeURIComponent or btoa for safely embedding full HTML inside an href
+    const dataUri = "data:text/html;charset=utf-8," + encodeURIComponent(singlePinHtml);
+
+    const similarWebBtn = pin.imageUrl ? `<a href="${dataUri}" target="_blank" class="btn btn-outline" rel="noopener noreferrer">🔍 See similar on web</a>` : "";
+
 
     return `
       <div class="card" data-price="${mockPrice}">
