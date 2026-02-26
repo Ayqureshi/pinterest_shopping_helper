@@ -36,13 +36,38 @@ function buildCSV(data = []) {
 
 function triggerDownload(content, filename = "pinterest_export.csv", mimeType = "text/csv") {
   if (typeof chrome !== 'undefined' && chrome.downloads) {
-    // Background worker compatibility
-    const dataUrl = `data:${mimeType};charset=utf-8,${encodeURIComponent(content)}`;
-    chrome.downloads.download({
-      url: dataUrl,
-      filename: filename,
-      saveAs: false
-    });
+    try {
+      const utf8Bytes = new TextEncoder().encode(content);
+      let binary = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < utf8Bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, utf8Bytes.subarray(i, i + chunkSize));
+      }
+      const b64 = globalScope.btoa(binary);
+      const dataUrl = `data:${mimeType};base64,${b64}`;
+
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: filename,
+        saveAs: false
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error("chrome.downloads error: ", chrome.runtime.lastError.message);
+          if (chrome.notifications) {
+            chrome.notifications.create({
+              type: "basic",
+              iconUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              title: "Export Error",
+              message: "Failed to save file: " + chrome.runtime.lastError.message
+            });
+          }
+        } else {
+          console.log("Download successfully triggered, ID:", downloadId);
+        }
+      });
+    } catch (err) {
+      console.error("triggerDownload error:", err);
+    }
   } else {
     // Fallback for DOM environments (popup.js)
     const blob = new Blob([content], { type: mimeType });
